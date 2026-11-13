@@ -129,6 +129,10 @@ jobs:
     needs: [dist, windows, linux, docker]
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.version || github.ref_name }}
+          fetch-depth: 0
       - uses: actions/download-artifact@v4
         with:
           name: python-dist
