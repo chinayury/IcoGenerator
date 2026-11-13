@@ -1,4 +1,4 @@
-# IcoGenerator v0.1.0
+# IcoGenerator
 
 多尺寸 ICO 图标生成器。把常见图片（JPG / PNG / GIF / BMP / WebP / TIFF / ICO / SVG）转换为包含多个分辨率的 ICO 文件，适用于网站 favicon 与应用程序图标。
 
@@ -59,13 +59,11 @@ icogen convert logo.png --fit maskable --safe-zone 0.6 --background "#ffffff"
 
 ## 版本
 
-当前版本：**v0.1.0**
+版本号统一维护在以下三个位置，升级版本时需同时修改：
 
-版本号锁定在三个位置，升级版本时需同时修改：
-
-- `pyproject.toml` → `version = "0.1.0"`
-- `src/icogenerator/__init__.py` → `__version__ = "0.1.0"`
-- `src/icogenerator/server.py` → `VERSION = "0.1.0"`
+- `pyproject.toml` → `version`
+- `src/icogenerator/__init__.py` → `__version__`
+- `src/icogenerator/server.py` → `VERSION`
 
 ## CI 与发布产物
 
@@ -76,10 +74,10 @@ icogen convert logo.png --fit maskable --safe-zone 0.6 --background "#ffffff"
 
 | 产物 | 内容 |
 |---|---|
-| Python 包 | `icogenerator-0.1.0-py3-none-any.whl`、sdist；安装后提供 `icogen` / `icogen-desktop` |
-| Windows 包 | `IcoGenerator-v0.1.0-Windows-x64.zip`：桌面版 EXE + `icogen.exe`（CLI / serve） |
-| Linux 包 | `IcoGenerator-v0.1.0-Linux-x86_64.tar.gz`：`icogen`（CLI / serve） |
-| Docker 镜像 | `ghcr.io/chinayury/icogenerator:v0.1.0`、`:latest` |
+| Python 包 | `icogenerator-<version>-py3-none-any.whl`、sdist；安装后提供 `icogen` / `icogen-desktop` |
+| Windows 包 | `IcoGenerator-<version>-Windows-x64.zip`：桌面版 EXE + `icogen.exe`（CLI / serve） |
+| Linux 包 | `IcoGenerator-<version>-Linux-x86_64.tar.gz`：`icogen`（CLI / serve） |
+| Docker 镜像 | `ghcr.io/chinayury/icogenerator:<version>`、`:latest` |
 
 > 桌面版与管理台/网页版共享同一服务端包；网页版和管理台是 `icogen serve` 的两个路由，
 > 不单独拆包。Windows 可执行文件未签名，首次运行可能触发 SmartScreen 提示。
