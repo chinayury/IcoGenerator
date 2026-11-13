@@ -1,0 +1,3 @@
+# IcoGenerator
+
+Repository initialization.
