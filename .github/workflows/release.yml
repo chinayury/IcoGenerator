@@ -131,8 +131,16 @@ jobs:
     steps:
       - uses: actions/download-artifact@v4
         with:
+          name: python-dist
           path: artifacts
-          merge-multiple: true
+      - uses: actions/download-artifact@v4
+        with:
+          name: windows-package
+          path: artifacts
+      - uses: actions/download-artifact@v4
+        with:
+          name: linux-package
+          path: artifacts
       - name: Create or update release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
