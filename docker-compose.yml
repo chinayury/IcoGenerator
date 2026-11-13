@@ -3,7 +3,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: icogenerator:0.1.0
+    image: icogenerator:latest
     container_name: icogenerator
     restart: unless-stopped
     ports:
