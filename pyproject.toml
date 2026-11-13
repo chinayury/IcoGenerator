@@ -1,0 +1,43 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "icogenerator"
+version = "0.1.0"
+description = "多尺寸 ICO 图标生成器：桌面版 GUI + 本地网页版 + 管理控制台"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "AGPL-3.0-or-later" }
+authors = [{ name = "IcoGenerator Contributors" }]
+keywords = ["ico", "icon", "favicon", "image", "pillow", "s3"]
+
+# 运行时依赖刻意保持最小：
+# - Pillow：唯一的图像处理必需项
+# - requests：旧版依赖。v0.1.0 的对象存储上传已改为标准库实现 SigV4，
+#   不再需要 requests / boto3 等第三方网络库。
+dependencies = [
+    "Pillow>=10.0.0",
+]
+
+[project.optional-dependencies]
+# 拖拽支持为可选增强：未安装时桌面版自动降级为「点击选择文件」
+dnd = ["tkinterdnd2>=0.4.2"]
+
+[project.scripts]
+icogen = "icogenerator.cli:main"
+
+[project.gui-scripts]
+icogen-desktop = "icogenerator.desktop:main"
+
+[project.urls]
+Homepage = "https://github.com/chinayury/IcoGenerator"
+
+[tool.setuptools]
+package-dir = { "" = "src" }
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+icogenerator = ["web/*.html", "web/*.css", "web/*.js", "assets/*"]

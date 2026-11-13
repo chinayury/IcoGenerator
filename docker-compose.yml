@@ -1,0 +1,24 @@
+services:
+  icogenerator:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: icogenerator:0.1.0
+    container_name: icogenerator
+    restart: unless-stopped
+    ports:
+      - "8765:8765"
+    environment:
+      ICOGEN_HOST: "0.0.0.0"
+      ICOGEN_PORT: "8765"
+      ICOGEN_OUTPUT_DIR: "/data/output"
+    volumes:
+      - icogenerator-data:/data
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+volumes:
+  icogenerator-data:
+    name: icogenerator-data

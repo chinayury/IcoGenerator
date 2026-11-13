@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>IcoGenerator · ICO 图标生成器 v0.1.0</title>
+<link rel="icon" href="/favicon.ico" type="image/x-icon">
+<link rel="stylesheet" href="client.css">
+</head>
+<body>
+<div class="layout">
+
+  <!-- 左栏：品牌 / 服务状态 / 步骤导航 -->
+  <aside class="rail">
+    <div class="brand">
+      <span class="brand-mark" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="5"/><circle cx="12" cy="12" r="4.2"/><path d="M16.6 7.4h.01"/></svg>
+      </span>
+      <span class="brand-text"><strong>IcoGenerator</strong><small>ICO 图标生成器</small></span>
+    </div>
+
+    <span class="badge" id="statusBadge">检查服务…</span>
+
+    <nav class="steps" aria-label="操作步骤">
+      <a href="#stepSource"><i>1</i><span>导入源图</span></a>
+      <a href="#stepSpec"><i>2</i><span>定制输出</span></a>
+      <a href="#resultCard"><i>3</i><span>预览下载</span></a>
+    </nav>
+
+    <p class="rail-note">纯本地处理：图片只在本机流转，不会上传到任何外部服务器。</p>
+  </aside>
+
+  <main class="stage">
+
+    <!-- 第 1 步：源图导入 -->
+    <section class="card" id="stepSource">
+      <h2><span class="stepno">01</span><svg class="hicon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>导入源图</h2>
+      <div class="drop" id="drop" tabindex="0">
+        <p><strong>把图片拖进这里</strong>，或点击浏览选择</p>
+        <small>支持 JPG / PNG / GIF / BMP / WebP / TIFF</small>
+        <input type="file" id="file" accept="image/*" hidden>
+      </div>
+      <p class="msg" id="fileMsg"></p>
+    </section>
+
+    <!-- 第 2 步：输出规格 -->
+    <section class="card" id="stepSpec">
+      <h2><span class="stepno">02</span><svg class="hicon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></svg>定制输出规格</h2>
+
+      <div class="presets" id="presets"></div>
+      <div class="sizes" id="sizes"></div>
+
+      <label class="fit">
+        非正方形源图处理策略：
+        <select id="fit">
+          <option value="cover">居中裁切铺满（推荐 favicon）</option>
+          <option value="contain">完整保留并留边</option>
+          <option value="maskable">PWA 安全区（内容缩到中心比例）</option>
+          <option value="stretch">强制拉伸（兼容旧版）</option>
+        </select>
+      </label>
+
+      <div class="params">
+        <label>安全区比例
+          <input type="number" id="safeZone" min="0.5" max="1" step="0.05" value="0.8">
+        </label>
+        <label>留白颜色
+          <input type="text" id="background" value="#ffffff" maxlength="7">
+        </label>
+        <label class="check">
+          <input type="checkbox" id="padOpaque">
+          补边不透明
+        </label>
+      </div>
+
+      <label class="fit">
+        <input type="checkbox" id="includeMaskable" checked>
+        站点物料包包含 maskable 安全区变体
+      </label>
+
+      <button class="btn primary block" id="btnGen" disabled>生成 ICO</button>
+      <p class="msg" id="genMsg"></p>
+    </section>
+
+    <!-- 第 3 步：预览与下载 -->
+    <section class="card result" id="resultCard" hidden>
+      <h2><span class="stepno">03</span><svg class="hicon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>预览与下载</h2>
+
+      <div id="warnings"></div>
+      <div class="actual" id="actualTiles"></div>
+      <div class="preview" id="preview"></div>
+
+      <div class="exports">
+        <button class="btn primary" id="btnSaveIco">下载多尺寸 ICO</button>
+        <button class="btn" id="btnSaveBundle">下载全部尺寸 (ZIP)</button>
+        <button class="btn" id="btnSaveSiteAssets">下载站点物料包 (ZIP)</button>
+      </div>
+      <p class="msg" id="saveMsg"></p>
+    </section>
+
+  </main>
+</div>
+
+<script src="client.js"></script>
+</body>
+</html>

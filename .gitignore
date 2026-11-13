@@ -1,0 +1,33 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# 本地运行产物与配置（含可能的对象存储凭据，禁止入库）
+output/
+data/
+.icogen/
+config.json
+*.log
+.env
+.env.*
+!.env.example
+
+# 扫描/测试工具与临时目录
+.mimosa/
+.pytest-tmp/
+.playwright-mcp/
+
+# 编辑器与操作系统
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db

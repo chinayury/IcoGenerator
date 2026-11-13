@@ -1,0 +1,21 @@
+# IcoGenerator v0.1.0 运行时依赖
+#
+# 刻意保持最小：仅 Pillow 一个必需项。
+# 对象存储上传使用标准库实现 AWS SigV4，无需 boto3/requests，
+# 既减少安装体积，也减少了第三方供应链风险面。
+
+Pillow>=10.0.0
+
+# ---- 可选：桌面版拖拽支持 ----
+# 不安装时桌面版自动降级为「点击选择文件」，功能不受影响。
+tkinterdnd2>=0.4.2 ; platform_system == "Windows" or platform_system == "Linux"
+
+# ---- 可选：桌面版现代主题 ----
+# 提供 arc / adapta 等主题；不安装时回退到内置 clam 主题，功能不受影响。
+ttkthemes>=3.2.2
+
+# ---- 可选：SVG 输入 ----
+# 需要系统 Cairo 库（Windows 需额外安装 GTK 运行时，macOS: brew install cairo，
+# Debian/Ubuntu: apt install libcairo2）。不安装时 SVG 输入给出明确提示，
+# 其他格式完全不受影响。
+cairosvg>=2.7.0

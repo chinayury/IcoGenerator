@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<title>IcoGenerator · 管理控制台 v0.1.0</title>
+<link rel="icon" href="/favicon.ico" type="image/x-icon">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="layout">
+
+  <!-- 左栏：品牌 / 运行状态 / 分区导航 -->
+  <aside class="rail">
+    <div class="brand">
+      <span class="brand-mark" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="5"/><path d="M7 12.5l3 3 7-7"/></svg>
+      </span>
+      <span class="brand-text"><strong>IcoGenerator</strong><small>管理控制台</small></span>
+    </div>
+
+    <div class="rail-badges">
+      <span class="badge" id="versionBadge">v0.1.0</span>
+      <span class="badge muted" id="storageBadge">对象存储：未启用</span>
+      <span class="badge muted" id="schedBadge">定时任务：未启用</span>
+    </div>
+
+    <nav class="steps" aria-label="配置分区">
+      <a href="#tokenCard"><i>1</i><span>接入控制台</span></a>
+      <a href="#storageCard"><i>2</i><span>云端存储</span></a>
+      <a href="#schedCard"><i>3</i><span>自动调度</span></a>
+      <a href="#listCard"><i>4</i><span>产物管理</span></a>
+    </nav>
+
+    <p class="rail-note">凭据只保存在本机配置文件：不写入源码，不回显页面。</p>
+  </aside>
+
+  <main class="stage">
+
+    <!-- 1. 接入 -->
+    <section class="card" id="tokenCard">
+      <h2><span class="stepno">01</span><svg class="hicon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>接入控制台</h2>
+      <p class="hint">服务启动时会在终端打印一次性令牌；管理操作（改配置、上传、下载）均需持有该令牌。</p>
+      <div class="row">
+        <input type="password" id="token" placeholder="粘贴管理员令牌" autocomplete="off">
+        <button class="btn" id="btnLoad">连接</button>
+      </div>
+      <p class="msg" id="tokenMsg"></p>
+    </section>
+
+    <!-- 2. 云端存储 -->
+    <section class="card locked" id="storageCard">
+      <h2><span class="stepno">02</span><svg class="hicon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/></svg>云端存储配置</h2>
+      <p class="hint">
+        未配置云端存储时，生成结果<b>仅保存在本地目录</b>，前台功能完全不受影响。
+        凭据只保存在本机配置文件，不会写入源码，也不会回显到页面。
+      </p>
+
+      <div class="grid">
+        <label>启用上传
+          <input type="checkbox" id="storageEnabled">
+        </label>
+        <label>Endpoint
+          <input type="text" id="endpoint" placeholder="https://oss-cn-hangzhou.aliyuncs.com">
+        </label>
+        <label>Region
+          <input type="text" id="region" placeholder="oss-cn-hangzhou">
+        </label>
+        <label>Bucket
+          <input type="text" id="bucket" placeholder="my-bucket">
+        </label>
+        <label>Access Key
+          <input type="password" id="accessKey" placeholder="留空表示不修改" autocomplete="off">
+        </label>
+        <label>Secret Key
+          <input type="password" id="secretKey" placeholder="留空表示不修改" autocomplete="off">
+        </label>
+        <label>路径前缀
+          <input type="text" id="prefix" placeholder="icongenerator">
+        </label>
+        <label>寻址方式
+          <select id="pathStyle">
+            <option value="true">path-style（MinIO / 自建）</option>
+            <option value="false">virtual-host（OSS / COS / S3）</option>
+          </select>
+        </label>
+        <label>使用 HTTPS
+          <input type="checkbox" id="useSsl">
+        </label>
+        <label>超时（秒）
+          <input type="number" id="timeout" min="1" max="300" value="30">
+        </label>
+      </div>
+
+      <div class="row">
+        <button class="btn primary" id="btnSaveStorage">保存配置</button>
+        <button class="btn" id="btnTestStorage">测试连接</button>
+      </div>
+      <p class="msg" id="storageMsg"></p>
+    </section>
+
+    <!-- 3. 自动调度 -->
+    <section class="card locked" id="schedCard">
+      <h2><span class="stepno">03</span><svg class="hicon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>自动上传调度</h2>
+      <p class="hint">到点自动把本地待上传文件推送到对象存储；上传失败自动重试，前台无感知。</p>
+      <div class="grid">
+        <label>启用定时任务
+          <input type="checkbox" id="schedEnabled">
+        </label>
+        <label>间隔（分钟）
+          <input type="number" id="interval" min="1" max="1440" value="30">
+        </label>
+        <label>单批数量
+          <input type="number" id="batchSize" min="1" max="1000" value="50">
+        </label>
+        <label>失败重试次数
+          <input type="number" id="maxRetries" min="0" max="10" value="3">
+        </label>
+      </div>
+      <div class="row">
+        <button class="btn primary" id="btnSaveSched">保存调度配置</button>
+        <button class="btn" id="btnSchedStart">启动</button>
+        <button class="btn danger" id="btnSchedStop">停止</button>
+        <button class="btn" id="btnUploadPending">立即上传全部待传</button>
+      </div>
+      <p class="msg" id="schedMsg"></p>
+    </section>
+
+    <!-- 4. 产物 -->
+    <section class="card locked" id="listCard">
+      <h2><span class="stepno">04</span><svg class="hicon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/></svg>生成产物管理</h2>
+      <div class="row">
+        <button class="btn" id="btnRefresh">刷新</button>
+        <span class="hint" id="statsLine"></span>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>文件名</th><th>大小</th><th>包含尺寸</th>
+              <th>上传状态</th><th>创建时间</th><th>操作</th>
+            </tr>
+          </thead>
+          <tbody id="artifactBody"></tbody>
+        </table>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<script src="admin.js"></script>
+</body>
+</html>
