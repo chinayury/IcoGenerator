@@ -1,0 +1,146 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Existing tag to release (e.g. v0.1.0)"
+        required: true
+        default: "v0.1.0"
+
+permissions:
+  contents: write
+  packages: write
+
+env:
+  VERSION: ${{ github.event.inputs.version || github.ref_name }}
+
+jobs:
+  dist:
+    name: Python package
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.version || github.ref_name }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: |
+          python -m pip install --upgrade pip build
+          python -m build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: python-dist
+          path: dist/*
+          if-no-files-found: error
+
+  windows:
+    name: Windows desktop and CLI
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.version || github.ref_name }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install build dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install ".[dnd]" ttkthemes pyinstaller
+      - name: Build executables
+        run: |
+          pyinstaller --noconfirm --clean --onefile --windowed --name IcoGenerator-Desktop --collect-data icogenerator --collect-all tkinterdnd2 --distpath release/windows --workpath build/pyinstaller-desktop packaging/pyinstaller_desktop.py
+          pyinstaller --noconfirm --clean --onefile --console --name icogen --collect-data icogenerator --distpath release/windows --workpath build/pyinstaller-cli packaging/pyinstaller_cli.py
+      - name: Package zip
+        shell: pwsh
+        run: |
+          Copy-Item -Path README.md, LICENSE -Destination release/windows/
+          Compress-Archive -Path release/windows/* -DestinationPath "IcoGenerator-$env:VERSION-Windows-x64.zip"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-package
+          path: IcoGenerator-*-Windows-x64.zip
+          if-no-files-found: error
+
+  linux:
+    name: Linux CLI and server
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.version || github.ref_name }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install build dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install . pyinstaller
+      - name: Build executable
+        run: |
+          pyinstaller --noconfirm --clean --onefile --console --name icogen --collect-data icogenerator --distpath release/linux --workpath build/pyinstaller-linux packaging/pyinstaller_cli.py
+          cp README.md LICENSE release/linux/
+          cd release/linux
+          tar -czf "../IcoGenerator-${VERSION}-Linux-x86_64.tar.gz" icogen README.md LICENSE
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-package
+          path: release/IcoGenerator-*-Linux-x86_64.tar.gz
+          if-no-files-found: error
+
+  docker:
+    name: Docker image (GHCR)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.version || github.ref_name }}
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository_owner }}/icogenerator
+          tags: |
+            type=raw,value=${{ env.VERSION }}
+            type=raw,value=latest
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+      - name: Try to make GHCR package public
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh api --method PATCH /user/packages/container/icogenerator -f visibility=public
+
+  release:
+    name: Publish GitHub Release
+    needs: [dist, windows, linux, docker]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+      - name: Create or update release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          ls -R artifacts
+          if gh release view "$VERSION" >/dev/null 2>&1; then
+            gh release upload "$VERSION" artifacts/* --clobber
+          else
+            gh release create "$VERSION" artifacts/* --title "IcoGenerator $VERSION" --generate-notes
+          fi

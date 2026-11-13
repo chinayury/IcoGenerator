@@ -67,6 +67,23 @@ icogen convert logo.png --fit maskable --safe-zone 0.6 --background "#ffffff"
 - `src/icogenerator/__init__.py` → `__version__ = "0.1.0"`
 - `src/icogenerator/server.py` → `VERSION = "0.1.0"`
 
+## CI 与发布产物
+
+仓库内置 GitHub Actions：
+
+- `.github/workflows/ci.yml`：push / PR 自动构建 wheel + sdist，运行 CLI、ICO 生成、Web/API 与 Docker 冒烟测试。
+- `.github/workflows/release.yml`：推送 `v*` 标签或手动触发时构建并发布：
+
+| 产物 | 内容 |
+|---|---|
+| Python 包 | `icogenerator-0.1.0-py3-none-any.whl`、sdist；安装后提供 `icogen` / `icogen-desktop` |
+| Windows 包 | `IcoGenerator-v0.1.0-Windows-x64.zip`：桌面版 EXE + `icogen.exe`（CLI / serve） |
+| Linux 包 | `IcoGenerator-v0.1.0-Linux-x86_64.tar.gz`：`icogen`（CLI / serve） |
+| Docker 镜像 | `ghcr.io/chinayury/icogenerator:v0.1.0`、`:latest` |
+
+> 桌面版与管理台/网页版共享同一服务端包；网页版和管理台是 `icogen serve` 的两个路由，
+> 不单独拆包。Windows 可执行文件未签名，首次运行可能触发 SmartScreen 提示。
+
 ## 许可
 
 本项目包含可对外提供服务的 Web 形态，按项目许可策略采用

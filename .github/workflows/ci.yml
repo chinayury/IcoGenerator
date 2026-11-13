@@ -1,0 +1,102 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        python-version: ["3.12"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install package
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install .
+
+      - name: CLI and ICO smoke test
+        shell: bash
+        run: |
+          set -euo pipefail
+          icogen --version
+          icogen info
+          python -c "from PIL import Image; Image.new('RGBA', (256, 256), (14, 125, 104, 255)).save('smoke.png')"
+          icogen convert smoke.png -s 16,32,48,256 -o smoke-out
+          python -c "from PIL import Image; im = Image.open('smoke-out/icons/smoke.ico'); sizes = sorted(im.info['sizes']); assert sizes == [(16,16),(32,32),(48,48),(256,256)], sizes; print('ICO sizes:', sizes)"
+
+      - name: Web and API smoke test
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          icogen serve --host 127.0.0.1 --port 8765 > server.log 2>&1 &
+          SERVER_PID=$!
+          trap 'kill "$SERVER_PID" 2>/dev/null || true' EXIT
+          for i in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:8765/api/health > health.json; then
+              break
+            fi
+            sleep 0.5
+          done
+          cat health.json
+          grep -q '"version": "0.1.0"' health.json
+          curl -fsS -o /dev/null http://127.0.0.1:8765/app
+          curl -fsS -o /dev/null http://127.0.0.1:8765/admin
+          echo "web/API smoke test passed"
+
+  build-dist:
+    name: Build wheel and sdist
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Build package
+        run: |
+          python -m pip install --upgrade pip build
+          python -m build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: python-dist
+          path: dist/*
+          if-no-files-found: error
+
+  docker-build:
+    name: Build Docker image
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build image
+        run: docker build -t icogenerator:ci .
+      - name: Run container health check
+        run: |
+          set -euo pipefail
+          docker run -d --name icogenerator-ci -p 18765:8765 icogenerator:ci
+          trap 'docker rm -f icogenerator-ci >/dev/null 2>&1 || true' EXIT
+          for i in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:18765/api/health > health.json; then
+              break
+            fi
+            sleep 1
+          done
+          cat health.json
+          grep -q '"version": "0.1.0"' health.json
+          docker logs icogenerator-ci | tail -20

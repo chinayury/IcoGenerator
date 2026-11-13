@@ -1,4 +1,5 @@
 .git
+.github
 .gitignore
 __pycache__
 *.py[cod]
@@ -6,6 +7,10 @@ __pycache__
 .venv
 venv
 env
+build
+dist
+release
+*.spec
 output
 data
 docs
