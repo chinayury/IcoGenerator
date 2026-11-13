@@ -31,6 +31,7 @@ from .core import (
     build_site_assets_zip,
     build_ico,
     estimate_ico_cost,
+    png_bytes,
     quality_hints,
     read_ico_sizes,
 )
@@ -164,21 +165,37 @@ def cmd_convert(args: argparse.Namespace) -> int:
     sizes = _parse_sizes(args.sizes)
     background = _parse_color(args.background)
     safe_zone = _parse_safe_zone(args.safe_zone)
+    fit_mode = args.fit
+    padding = _parse_padding(args.padding)
+
+    png_sizes = None
+    if args.png_sizes:
+        png_sizes = _parse_sizes(args.png_sizes)
+        for width, height in png_sizes:
+            if not (1 <= width <= 1024 and 1 <= height <= 1024):
+                raise IcogenError(
+                    f"PNG 尺寸必须在 1-1024 之间：{width}x{height}"
+                )
 
     source = Path(args.input)
     if not source.exists():
         _print(f"错误：路径不存在 {source}", err=True)
         return 1
 
-    files = sorted(
-        [p for p in source.iterdir() if p.is_file()] if source.is_dir() else [source]
-    )
+    if source.is_dir():
+        # 目录输入只处理支持的图片格式：递归扫描项目目录时不再把无关文件
+        # 逐个报错，而是直接跳过（同类批量转换均按格式过滤）
+        candidates = source.rglob("*") if args.recursive else source.iterdir()
+        files = sorted(
+            p for p in candidates
+            if p.is_file() and p.suffix.lower() in SUPPORTED_INPUT_FORMATS
+        )
+    else:
+        files = [source]
     if not files:
-        _print(f"错误：{source} 下没有可处理的文件", err=True)
+        _print(f"错误：{source} 下没有可处理的图片文件", err=True)
         return 1
 
-    fit_mode = args.fit
-    padding = _parse_padding(args.padding)
     failures = 0
     total_bytes = 0
 
@@ -187,6 +204,9 @@ def cmd_convert(args: argparse.Namespace) -> int:
         _print(f"  适配策略 {fit_mode}　安全区 {safe_zone:.2f}　留白比例 {padding:.2f}　"
               f"颜色 #{background[0]:02x}{background[1]:02x}{background[2]:02x}"
               f"（不透明：{'是' if args.pad_opaque else '否'}）")
+        if png_sizes:
+            _print("  将额外输出独立 PNG："
+                   + ", ".join(f"{w}x{h}" for w, h in png_sizes))
 
     # --site-assets 所需的一次性参数（与 ICO 共用同一套适配参数）
     merge_manifest_text = None
@@ -229,6 +249,24 @@ def cmd_convert(args: argparse.Namespace) -> int:
             total_bytes += record.size
             _print(f"✓ {path.name} -> {record.filename} "
                   f"({record.size:,} 字节, {len(produced)} 个尺寸)")
+
+            if png_sizes:
+                # 独立 PNG 输出（借鉴要点：同类普遍提供 png 尺寸集）
+                for width, height in png_sizes:
+                    png_data = png_bytes(
+                        image, (width, height), fit_mode,
+                        safe_zone=safe_zone, background=background,
+                        opaque_pad=args.pad_opaque, padding=padding,
+                    )
+                    png_record = store.save_bytes(
+                        png_data,
+                        filename=f"{path.stem}-{width}x{height}.png",
+                        source_name=path.name,
+                        fit_mode=fit_mode,
+                        sizes=[f"{width}x{height}"],
+                    )
+                    total_bytes += png_record.size
+                    _print(f"  ↳ {png_record.filename} ({png_record.size:,} 字节)")
 
             if args.site_assets:
                 # 站点物料包与 ICO 共用同一套参数（借鉴要点 B1：CLI-first）
@@ -413,6 +451,10 @@ def build_parser() -> argparse.ArgumentParser:
                            help="留白填充色，6 位十六进制，如 #ffffff")
     p_convert.add_argument("--pad-opaque", action="store_true",
                            help="留白使用不透明背景色（默认透明留边）")
+    p_convert.add_argument("--recursive", action="store_true",
+                           help="目录输入时递归扫描子目录（仅处理支持的图片格式）")
+    p_convert.add_argument("--png-sizes", default=None,
+                           help="额外输出独立 PNG，尺寸逗号分隔，如 16,32,256（1-1024）")
     p_convert.add_argument("--site-assets", action="store_true",
                            help="同时输出完整站点物料包 ZIP（favicon/manifest/磁贴等）")
     p_convert.add_argument("--no-maskable", action="store_true",

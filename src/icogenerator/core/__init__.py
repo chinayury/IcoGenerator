@@ -49,6 +49,7 @@ from .assets import (
     describe_site_assets,
     estimate_ico_cost,
     merge_manifest,
+    png_bytes,
 )
 from .quality import (
     LEVEL_ERROR,
@@ -104,6 +105,7 @@ __all__ = [
     "describe_site_assets",
     "estimate_ico_cost",
     "merge_manifest",
+    "png_bytes",
     "LEVEL_SUCCESS",
     "LEVEL_WARNING",
     "LEVEL_ERROR",

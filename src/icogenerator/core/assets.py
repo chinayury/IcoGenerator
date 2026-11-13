@@ -57,7 +57,7 @@ MANIFEST_FILENAME = "MANIFEST.txt"
 SVG_FAVICON_FILENAME = "favicon.svg"
 
 
-def _png_bytes(
+def png_bytes(
     image: Image.Image,
     size: Tuple[int, int],
     fit_mode: str,
@@ -67,7 +67,7 @@ def _png_bytes(
     opaque_pad: bool = False,
     padding: float = MIN_PADDING,
 ) -> bytes:
-    """生成指定尺寸的 PNG 字节。"""
+    """生成指定尺寸的独立 PNG 字节（供站点物料包与 CLI --png-sizes 共用）。"""
     import io
 
     square = normalize_to_square(
@@ -340,13 +340,13 @@ def build_site_assets(
 
     # 2) 独立 PNG 尺寸（部分场景仍需要单独文件引用）
     for size in FAVICON_SIZES:
-        assets[f"favicon-{size[0]}x{size[1]}.png"] = _png_bytes(
+        assets[f"favicon-{size[0]}x{size[1]}.png"] = png_bytes(
             image, size, fit_mode, safe_zone=safe_zone,
             background=background, opaque_pad=opaque_pad, padding=padding,
         )
 
     # 3) iOS 主屏
-    assets["apple-touch-icon.png"] = _png_bytes(
+    assets["apple-touch-icon.png"] = png_bytes(
         image, (APPLE_TOUCH_SIZE, APPLE_TOUCH_SIZE), fit_mode,
         safe_zone=safe_zone, background=background, opaque_pad=opaque_pad,
         padding=padding,
@@ -354,20 +354,20 @@ def build_site_assets(
 
     # 4) Android / PWA
     for size in ANDROID_SIZES:
-        assets[f"android-chrome-{size[0]}x{size[1]}.png"] = _png_bytes(
+        assets[f"android-chrome-{size[0]}x{size[1]}.png"] = png_bytes(
             image, size, fit_mode, safe_zone=safe_zone,
             background=background, opaque_pad=opaque_pad, padding=padding,
         )
 
     # 5) maskable 变体：内容缩到中心安全区，系统裁切成任意形状都不丢关键信息
     if include_maskable:
-        assets["android-chrome-512x512-maskable.png"] = _png_bytes(
+        assets["android-chrome-512x512-maskable.png"] = png_bytes(
             image, (512, 512), "maskable", safe_zone=safe_zone,
             background=background,
         )
 
     # 6) Windows 磁贴
-    assets["mstile-150x150.png"] = _png_bytes(
+    assets["mstile-150x150.png"] = png_bytes(
         image, (MSTILE_SIZE, MSTILE_SIZE), fit_mode, safe_zone=safe_zone,
         background=background, opaque_pad=opaque_pad, padding=padding,
     )
