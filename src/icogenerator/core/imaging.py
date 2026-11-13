@@ -68,6 +68,12 @@ MASKABLE_SAFE_ZONE = 0.8
 MIN_SAFE_ZONE = 0.5
 MAX_SAFE_ZONE = 1.0
 
+# 通用内容留白比例（借鉴 pwa-asset-generator 的默认 10% padding，docs/06 要点 A1）。
+# 0 即不留白（旧行为）；0.1 表示主体内容占画面 90%，四周留出呼吸空间。
+# 上限 0.6：再大内容就小到没有实用价值了。
+MIN_PADDING = 0.0
+MAX_PADDING = 0.6
+
 
 def analyze_source(image: Image.Image, target_sizes: Sequence[Tuple[int, int]] | None = None) -> dict:
     """分析源图，给出面向用户的质量提示依据。
@@ -284,6 +290,7 @@ def normalize_to_square(
     background: Tuple[int, int, int] = (255, 255, 255),
     safe_zone: float = MASKABLE_SAFE_ZONE,
     opaque_pad: bool = False,
+    padding: float = MIN_PADDING,
 ) -> Image.Image:
     """把任意尺寸图像规范化为正方形 RGBA。
 
@@ -300,20 +307,28 @@ def normalize_to_square(
         background: 留白填充色的 RGB 三元组。
         safe_zone: ``maskable`` 模式的安全区比例，取值 ``MIN_SAFE_ZONE`` 至
             ``MAX_SAFE_ZONE``，默认 ``MASKABLE_SAFE_ZONE``（0.8）。
-        opaque_pad: ``contain`` 模式留白是否不透明。默认 ``False``（透明留边），
+        opaque_pad: 留白是否不透明。默认 ``False``（透明留边），
             这是现代 favicon 的惯用形态；置 ``True`` 时留白取 ``background`` 颜色。
+        padding: 通用内容留白比例（0 至 ``MAX_PADDING``）。仅作用于 ``cover`` /
+            ``contain``：内容缩至 ``(1 - padding)`` 比例居中，四周留出呼吸空间
+            （借鉴 pwa-asset-generator，docs/06 要点 A1）。``maskable`` 已有
+            ``safe_zone`` 表达同一诉求，``stretch`` 是兼容旧行为，两者均忽略此参数。
 
     Returns:
         正方形 RGBA 图像。
 
     Raises:
-        ValueError: 模式或安全区比例非法。
+        ValueError: 模式、安全区比例或留白比例非法。
     """
     if mode not in ("cover", "contain", "maskable", "stretch"):
         raise ValueError(f"未知的适配模式：{mode}")
     if not (MIN_SAFE_ZONE <= safe_zone <= MAX_SAFE_ZONE):
         raise ValueError(
             f"安全区比例必须在 {MIN_SAFE_ZONE} 至 {MAX_SAFE_ZONE} 之间：{safe_zone}"
+        )
+    if not (MIN_PADDING <= padding <= MAX_PADDING):
+        raise ValueError(
+            f"留白比例必须在 {MIN_PADDING} 至 {MAX_PADDING} 之间：{padding}"
         )
 
     # 先统一到 RGBA：这一步同时修掉 CMYK / LA / P+transparency 的全部模式问题，
@@ -346,12 +361,13 @@ def normalize_to_square(
         canvas = Image.new("RGBA", (side, side), (*background, pad_alpha))
         offset = ((side - new_w) // 2, (side - new_h) // 2)
         canvas.alpha_composite(scaled, dest=offset)
-        return canvas
+        return _shrink_with_padding(canvas, padding, background, opaque_pad)
 
     if mode == "maskable":
         # PWA 安全区：Android/iOS 会把图标裁成圆形、方形、水滴形等任意轮廓。
         # 内容顶到边缘时裁切会丢失关键信息，因此把主体缩到中心安全区。
         # 注意安全区是**相对最终尺寸**的固定比例，而非按内容比例自适应。
+        # maskable 与 stretch 已有各自的内容比例语义，padding 不参与这两个模式。
         inner = max(1, int(round(side * safe_zone)))
         scale = inner / max(rgba.width, rgba.height)
         new_w = max(1, min(inner, math.ceil(rgba.width * scale)))
@@ -365,7 +381,34 @@ def normalize_to_square(
         return canvas
 
     # cover：等比缩放后居中裁切，保证铺满且不变形
-    return _cover_to_square(rgba, side)
+    square = _cover_to_square(rgba, side)
+    return _shrink_with_padding(square, padding, background, opaque_pad)
+
+
+def _shrink_with_padding(
+    content: Image.Image,
+    padding: float,
+    background: Tuple[int, int, int],
+    opaque_pad: bool,
+) -> Image.Image:
+    """把已规范为正方形的内容缩至 ``(1 - padding)`` 比例并居中于新画布。
+
+    留白透明度沿用 ``opaque_pad`` 语义：默认透明留边（现代 favicon 惯例），
+    置 True 时用 ``background`` 填充。``padding`` 为 0 时原样返回，不引入
+    额外的重采样，保证与历史产出逐字节兼容。
+    """
+    if padding <= MIN_PADDING:
+        return content
+    side = content.width
+    inner = max(1, int(round(side * (1.0 - padding))))
+    if inner >= side:
+        return content
+    pad_alpha = 255 if opaque_pad else 0
+    canvas = Image.new("RGBA", (side, side), (*background, pad_alpha))
+    shrunk = content.resize((inner, inner), _RESAMPLE)
+    offset = ((side - inner) // 2, (side - inner) // 2)
+    canvas.alpha_composite(shrunk, dest=offset)
+    return canvas
 
 
 def _cover_to_square(image: Image.Image, side: int) -> Image.Image:

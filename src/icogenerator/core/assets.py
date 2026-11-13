@@ -33,6 +33,7 @@ from PIL import Image
 
 from .imaging import (
     MASKABLE_SAFE_ZONE,
+    MIN_PADDING,
     normalize_to_square,
     resize_for_ico,
 )
@@ -52,6 +53,9 @@ DEFAULT_DISPLAY = "standalone"
 # 物料包内清单文件名
 MANIFEST_FILENAME = "MANIFEST.txt"
 
+# 矢量 favicon 文件名（源图为 SVG 时随物料包附带，借鉴要点 C1）
+SVG_FAVICON_FILENAME = "favicon.svg"
+
 
 def _png_bytes(
     image: Image.Image,
@@ -61,13 +65,14 @@ def _png_bytes(
     safe_zone: float = MASKABLE_SAFE_ZONE,
     background: Tuple[int, int, int] = (255, 255, 255),
     opaque_pad: bool = False,
+    padding: float = MIN_PADDING,
 ) -> bytes:
     """生成指定尺寸的 PNG 字节。"""
     import io
 
     square = normalize_to_square(
         image, mode=fit_mode, background=background,
-        safe_zone=safe_zone, opaque_pad=opaque_pad,
+        safe_zone=safe_zone, opaque_pad=opaque_pad, padding=padding,
     )
     buffer = io.BytesIO()
     resize_for_ico(square, size).save(buffer, format="PNG", optimize=True)
@@ -119,6 +124,63 @@ def build_manifest(
     return json.dumps(manifest, indent=2, ensure_ascii=False)
 
 
+def merge_manifest(existing_text: str) -> str:
+    """把本项目的图标物料合并进用户既有的 manifest.json（借鉴要点 A3）。
+
+    设计原则（与 pwa-asset-generator 的 manifest 自动更新相比刻意保守）：
+    - 只增改 ``icons`` 数组：移除指向本项目产物文件名的旧条目再追加新条目；
+    - 其余字段（name / theme_color / start_url 等）**原样保留**，绝不覆盖用户配置；
+    - 解析失败或根节点不是对象时返回原文，不产出半损坏的 manifest。
+
+    Args:
+        existing_text: 用户现有 manifest.json 的文本内容。
+
+    Returns:
+        合并后的 manifest.json 文本。
+    """
+    try:
+        data = json.loads(existing_text)
+    except (json.JSONDecodeError, ValueError):
+        # 解析不了就不动它：宁可让用户手动合并，也不能毁掉现有配置
+        return existing_text
+    if not isinstance(data, dict):
+        return existing_text
+
+    ours = {f"android-chrome-{s[0]}x{s[1]}.png" for s in ANDROID_SIZES}
+    ours.add("android-chrome-512x512-maskable.png")
+
+    icons = [entry for entry in data.get("icons", []) if isinstance(entry, dict)]
+    kept = [
+        entry for entry in icons
+        if not any(str(entry.get("src", "")).endswith(name) for name in ours)
+    ]
+
+    kept.extend([
+        {
+            "src": "android-chrome-192x192.png",
+            "sizes": "192x192",
+            "type": "image/png",
+            "purpose": "any",
+        },
+        {
+            "src": "android-chrome-512x512.png",
+            "sizes": "512x512",
+            "type": "image/png",
+            "purpose": "any",
+        },
+        {
+            "src": "android-chrome-512x512-maskable.png",
+            "sizes": "512x512",
+            "type": "image/png",
+            "purpose": "maskable",
+        },
+    ])
+
+    merged = dict(data)
+    merged["icons"] = kept
+    return json.dumps(merged, indent=2, ensure_ascii=False)
+
+
 def build_browserconfig(tile_color: str = DEFAULT_THEME_COLOR) -> str:
     """生成 Windows 磁贴配置 browserconfig.xml。"""
     return (
@@ -134,23 +196,29 @@ def build_browserconfig(tile_color: str = DEFAULT_THEME_COLOR) -> str:
     )
 
 
-def build_html_snippet(*, include_manifest: bool = True) -> str:
+def build_html_snippet(*, include_manifest: bool = True, include_svg: bool = False) -> str:
     """生成可直接粘贴进 index.html 的引用片段。
 
     Android 尺寸由 ``manifest.json`` 声明，无需在 HTML 里重复 link
     （Android Chrome 只认 manifest 中的 icons，不读 <link rel="icon">）。
+    源图为 SVG 时 ``include_svg`` 会追加矢量 favicon 引用：支持它的浏览器
+    优先用矢量渲染，不支持的老浏览器回落到 ICO（借鉴要点 C1）。
     """
     lines = [
         '<!-- 将以下文件与你的页面放在同一目录 -->',
         '<link rel="icon" href="/favicon.ico" sizes="any">',
+    ]
+    if include_svg:
+        lines.append('<link rel="icon" type="image/svg+xml" href="/favicon.svg">')
+    lines.extend([
         '<link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png">',
         '<link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png">',
         '<link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">',
         '<meta name="msapplication-config" content="/browserconfig.xml">',
         '<meta name="msapplication-TileColor" content="%s">' % DEFAULT_THEME_COLOR,
-    ]
+    ])
     if include_manifest:
-        lines.insert(0, '<link rel="manifest" href="/manifest.json">')
+        lines.insert(1, '<link rel="manifest" href="/manifest.json">')
         lines.append(
             '<meta name="theme-color" content="%s">' % DEFAULT_THEME_COLOR
         )
@@ -164,6 +232,7 @@ def build_manifest_text(
     safe_zone: float = MASKABLE_SAFE_ZONE,
     background: Tuple[int, int, int] = (255, 255, 255),
     opaque_pad: bool = False,
+    padding: float = MIN_PADDING,
     ico_sizes: Sequence[Tuple[int, int]] = FAVICON_SIZES,
     include_maskable: bool = True,
     name: str = "My App",
@@ -190,7 +259,8 @@ def build_manifest_text(
         f"源图尺寸    : {source_size[0]}x{source_size[1]}",
         f"适配策略    : {fit_mode}",
         f"安全区比例  : {safe_zone:.2f}（maskable 变体使用）",
-        f"留白颜色    : {background_text}（contain 补边不透明："
+        f"留白比例    : {padding:.2f}（cover / contain 内容留白）",
+        f"留白颜色    : {background_text}（补边不透明："
         f"{'是' if opaque_pad else '否'}）",
         f"favicon.ico : {sizes_text}",
         f"maskable    : {'包含' if include_maskable else '不包含'}",
@@ -211,6 +281,14 @@ def build_manifest_text(
     return "\n".join(lines) + "\n"
 
 
+def _looks_like_svg(data: bytes) -> bool:
+    """轻量判定字节流是否为 SVG（只查前 4KB，不引入 XML 解析依赖）。"""
+    if not data:
+        return False
+    head = data[:4096].lstrip().lower()
+    return head.startswith(b"<?xml") or b"<svg" in head[:1024]
+
+
 def build_site_assets(
     image: Image.Image,
     *,
@@ -222,6 +300,9 @@ def build_site_assets(
     safe_zone: float = MASKABLE_SAFE_ZONE,
     background: Tuple[int, int, int] = (255, 255, 255),
     opaque_pad: bool = False,
+    padding: float = MIN_PADDING,
+    source_svg: Optional[bytes] = None,
+    existing_manifest: Optional[str] = None,
 ) -> Dict[str, bytes]:
     """生成完整站点物料包。
 
@@ -234,7 +315,12 @@ def build_site_assets(
         theme_color: 主题色，同时用于 manifest 与磁贴色。
         safe_zone: maskable 变体的安全区比例。
         background: 留白填充色 RGB。
-        opaque_pad: ``contain`` 模式留白是否不透明。
+        opaque_pad: 留白是否不透明。
+        padding: 通用内容留白比例（见 ``normalize_to_square``）。
+        source_svg: 源图为 SVG 时的原始字节；校验通过则附带 ``favicon.svg``
+            并在 HTML 片段中追加矢量引用（借鉴要点 C1）。
+        existing_manifest: 用户既有 manifest.json 文本；提供时只合并本项目的
+            icons 条目，其余字段原样保留（借鉴要点 A3）。
 
     Returns:
         ``{文件名: 字节内容}``，可直接写盘或打包 ZIP。
@@ -249,27 +335,28 @@ def build_site_assets(
     # 1) 多尺寸 ICO —— 浏览器标签、Windows 快捷方式
     assets["favicon.ico"] = build_ico(
         image, ico_sizes, fit_mode=fit_mode, safe_zone=safe_zone,
-        background=background, opaque_pad=opaque_pad,
+        background=background, opaque_pad=opaque_pad, padding=padding,
     )
 
     # 2) 独立 PNG 尺寸（部分场景仍需要单独文件引用）
     for size in FAVICON_SIZES:
         assets[f"favicon-{size[0]}x{size[1]}.png"] = _png_bytes(
             image, size, fit_mode, safe_zone=safe_zone,
-            background=background, opaque_pad=opaque_pad,
+            background=background, opaque_pad=opaque_pad, padding=padding,
         )
 
     # 3) iOS 主屏
     assets["apple-touch-icon.png"] = _png_bytes(
         image, (APPLE_TOUCH_SIZE, APPLE_TOUCH_SIZE), fit_mode,
         safe_zone=safe_zone, background=background, opaque_pad=opaque_pad,
+        padding=padding,
     )
 
     # 4) Android / PWA
     for size in ANDROID_SIZES:
         assets[f"android-chrome-{size[0]}x{size[1]}.png"] = _png_bytes(
             image, size, fit_mode, safe_zone=safe_zone,
-            background=background, opaque_pad=opaque_pad,
+            background=background, opaque_pad=opaque_pad, padding=padding,
         )
 
     # 5) maskable 变体：内容缩到中心安全区，系统裁切成任意形状都不丢关键信息
@@ -282,22 +369,32 @@ def build_site_assets(
     # 6) Windows 磁贴
     assets["mstile-150x150.png"] = _png_bytes(
         image, (MSTILE_SIZE, MSTILE_SIZE), fit_mode, safe_zone=safe_zone,
-        background=background, opaque_pad=opaque_pad,
+        background=background, opaque_pad=opaque_pad, padding=padding,
     )
 
-    # 7) 配置文件与引用片段
-    assets["browserconfig.xml"] = build_browserconfig(theme_color).encode("utf-8")
-    assets["manifest.json"] = build_manifest(
-        name=name, theme_color=theme_color,
-        background_color=DEFAULT_BACKGROUND_COLOR,
-    ).encode("utf-8")
-    assets["site-icon.html"] = build_html_snippet().encode("utf-8")
+    # 7) 矢量 favicon：源图本身是 SVG 时直接透传，现代浏览器优先用矢量渲染
+    include_svg = bool(source_svg and _looks_like_svg(source_svg))
+    if include_svg:
+        assets[SVG_FAVICON_FILENAME] = source_svg
 
-    # 8) 自说明清单：脱离生成环境后仍能读懂每个文件与所用参数
+    # 8) 配置文件与引用片段
+    assets["browserconfig.xml"] = build_browserconfig(theme_color).encode("utf-8")
+    if existing_manifest:
+        # 用户既有 manifest：只合并 icons，其余字段原样保留
+        assets["manifest.json"] = merge_manifest(existing_manifest).encode("utf-8")
+    else:
+        assets["manifest.json"] = build_manifest(
+            name=name, theme_color=theme_color,
+            background_color=DEFAULT_BACKGROUND_COLOR,
+        ).encode("utf-8")
+    assets["site-icon.html"] = build_html_snippet(include_svg=include_svg).encode("utf-8")
+
+    # 9) 自说明清单：脱离生成环境后仍能读懂每个文件与所用参数
     assets[MANIFEST_FILENAME] = build_manifest_text(
         source_size=image.size, fit_mode=fit_mode, safe_zone=safe_zone,
-        background=background, opaque_pad=opaque_pad, ico_sizes=ico_sizes,
-        include_maskable=include_maskable, name=name, theme_color=theme_color,
+        background=background, opaque_pad=opaque_pad, padding=padding,
+        ico_sizes=ico_sizes, include_maskable=include_maskable,
+        name=name, theme_color=theme_color,
     ).encode("utf-8")
 
     return assets
@@ -314,6 +411,9 @@ def build_site_assets_zip(
     safe_zone: float = MASKABLE_SAFE_ZONE,
     background: Tuple[int, int, int] = (255, 255, 255),
     opaque_pad: bool = False,
+    padding: float = MIN_PADDING,
+    source_svg: Optional[bytes] = None,
+    existing_manifest: Optional[str] = None,
 ) -> bytes:
     """生成站点物料包并打包为 ZIP（内存内完成，不落临时文件）。"""
     from io import BytesIO
@@ -329,6 +429,9 @@ def build_site_assets_zip(
         safe_zone=safe_zone,
         background=background,
         opaque_pad=opaque_pad,
+        padding=padding,
+        source_svg=source_svg,
+        existing_manifest=existing_manifest,
     )
 
     buffer = BytesIO()
@@ -342,6 +445,7 @@ def describe_site_assets() -> List[Dict[str, str]]:
     """返回物料清单说明，供界面展示（避免在前端硬编码文案）。"""
     return [
         {"file": "favicon.ico", "purpose": "浏览器标签、Windows 快捷方式（多尺寸）"},
+        {"file": "favicon.svg", "purpose": "矢量 favicon（源图为 SVG 时附带，现代浏览器优先使用）"},
         {"file": "favicon-16x16.png / favicon-32x32.png", "purpose": "浏览器标签独立引用"},
         {"file": "apple-touch-icon.png", "purpose": f"iOS 主屏图标（{APPLE_TOUCH_SIZE}）"},
         {"file": "android-chrome-192x192.png", "purpose": "Android 自适应图标"},

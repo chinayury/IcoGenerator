@@ -28,6 +28,8 @@ async function checkServer() {
     const resp = await fetch('/api/health', { cache: 'no-store' });
     const data = await resp.json();
     setBadge('服务已就绪 v' + data.version, 'ok');
+    // 版本号单一来源是后端 /api/health，页面不硬编码，发版不再漏改
+    document.title = 'IcoGenerator · ICO 图标生成器 v' + data.version;
   } catch (e) {
     setBadge('未连接到本地服务', 'err');
   }
@@ -196,6 +198,7 @@ async function generate() {
       output_name: 'favicon.ico',
       include_maskable: includeMaskable,
       safe_zone: $('safeZone').value,
+      padding: $('padding') ? (Number($('padding').value) || 0) : 0,
       background: $('background').value,
       opaque_pad: $('padOpaque').checked,
       name: 'My App',
@@ -343,6 +346,7 @@ $('btnSaveBundle').addEventListener('click', async () => {
       sizes: Array.from(selected).sort((a, b) => a - b),
       fit_mode: $('fit').value,
       safe_zone: Number($('safeZone') ? $('safeZone').value : 0.8) || 0.8,
+      padding: $('padding') ? (Number($('padding').value) || 0) : 0,
     };
     const resp = await fetch('/api/bundle', {
       method: 'POST',

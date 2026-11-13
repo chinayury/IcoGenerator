@@ -27,11 +27,14 @@ from pathlib import Path
 from typing import Any, Callable, Dict, Optional, Tuple
 from urllib.parse import parse_qs, urlparse
 
+from . import __version__ as VERSION
 from .config import AppConfig, save_config
 from .core import (
     ICO_SIZES,
     MASKABLE_SAFE_ZONE,
+    MAX_PADDING,
     MAX_SAFE_ZONE,
+    MIN_PADDING,
     MIN_SAFE_ZONE,
     PRESET_SIZE_SETS,
     analyze_source,
@@ -65,8 +68,6 @@ _STATIC_FILES: Dict[str, str] = {
     "/client.css": "text/css; charset=utf-8",
     "/client.js": "text/javascript; charset=utf-8",
 }
-
-VERSION = "0.1.0"
 
 # 站点图标：由本项目自己的引擎在内存中生成（"吃自己的狗粮"），
 # 避免额外维护一个二进制素材文件。首次请求时构建，之后复用。
@@ -594,11 +595,11 @@ class IcoGenHandler(BaseHTTPRequestHandler):
         fit_mode = str(payload.get("fit_mode") or "cover")
         if fit_mode not in ("cover", "contain", "maskable", "stretch"):
             raise IcogenError(f"未知的 fit_mode：{fit_mode}")
-        safe_zone, background, opaque_pad = self._parse_quality_params(payload)
+        safe_zone, background, opaque_pad, padding = self._parse_quality_params(payload)
 
         combined = build_ico(
             image, sizes, fit_mode=fit_mode, safe_zone=safe_zone,
-            background=background, opaque_pad=opaque_pad,
+            background=background, opaque_pad=opaque_pad, padding=padding,
         )
         analysis = analyze_source(image, sizes)
         hints = quality_hints(image, sizes, combined)
@@ -637,8 +638,8 @@ class IcoGenHandler(BaseHTTPRequestHandler):
 
     def _parse_quality_params(
         self, payload: Dict[str, Any]
-    ) -> Tuple[float, Tuple[int, int, int], bool]:
-        """解析安全区比例、留白颜色与补边透明度。
+    ) -> Tuple[float, Tuple[int, int, int], bool, float]:
+        """解析安全区比例、留白颜色、补边透明度与通用留白比例。
 
         颜色与比例的非法值在这里就失败，而不是等生成完才发现问题
         （借鉴 altophp/favicon 的「生成前校验」，docs/09 要点 6.2）。
@@ -647,6 +648,17 @@ class IcoGenHandler(BaseHTTPRequestHandler):
         if not (MIN_SAFE_ZONE <= safe_zone <= MAX_SAFE_ZONE):
             raise IcogenError(
                 f"safe_zone 必须在 {MIN_SAFE_ZONE} 至 {MAX_SAFE_ZONE} 之间：{safe_zone}"
+            )
+
+        try:
+            padding = float(payload.get("padding") or MIN_PADDING)
+        except (TypeError, ValueError) as exc:
+            raise IcogenError(
+                f"padding 必须是数字：{payload.get('padding')}"
+            ) from exc
+        if not (MIN_PADDING <= padding <= MAX_PADDING):
+            raise IcogenError(
+                f"padding 必须在 {MIN_PADDING} 至 {MAX_PADDING} 之间：{padding}"
             )
 
         color_text = str(payload.get("background") or "#ffffff").strip().lstrip("#")
@@ -661,7 +673,7 @@ class IcoGenHandler(BaseHTTPRequestHandler):
                 f"background 不是合法十六进制颜色：{payload.get('background')}"
             ) from exc
 
-        return safe_zone, background, bool(payload.get("opaque_pad"))
+        return safe_zone, background, bool(payload.get("opaque_pad")), padding
 
     def _handle_update_config(self) -> None:
         """更新对象存储与调度配置。"""
@@ -785,7 +797,14 @@ class IcoGenHandler(BaseHTTPRequestHandler):
         fit_mode = str(payload.get("fit_mode") or "cover")
         if fit_mode not in ("cover", "contain", "maskable", "stretch"):
             raise IcogenError(f"未知的 fit_mode：{fit_mode}")
-        safe_zone, background, opaque_pad = self._parse_quality_params(payload)
+        safe_zone, background, opaque_pad, padding = self._parse_quality_params(payload)
+
+        # 源图本身是 SVG 时把原始字节透传进物料包（favicon.svg，借鉴要点 C1）；
+        # 调用方也可显式传入既有 manifest.json 文本，只合并 icons 条目（要点 A3）。
+        source_svg = raw if str(payload.get("filename") or "").lower().endswith(".svg") else None
+        existing_manifest = payload.get("existing_manifest")
+        if existing_manifest is not None and not isinstance(existing_manifest, str):
+            existing_manifest = None
 
         payload_bytes = build_site_assets_zip(
             image,
@@ -797,6 +816,9 @@ class IcoGenHandler(BaseHTTPRequestHandler):
             safe_zone=safe_zone,
             background=background,
             opaque_pad=opaque_pad,
+            padding=padding,
+            source_svg=source_svg,
+            existing_manifest=existing_manifest,
         )
 
         self._send_binary(payload_bytes, "application/zip", "site-assets.zip", download=True)
@@ -828,12 +850,12 @@ class IcoGenHandler(BaseHTTPRequestHandler):
         fit_mode = str(payload.get("fit_mode") or "cover")
         if fit_mode not in ("cover", "contain", "maskable", "stretch"):
             raise IcogenError(f"未知的 fit_mode：{fit_mode}")
-        safe_zone, background, opaque_pad = self._parse_quality_params(payload)
+        safe_zone, background, opaque_pad, padding = self._parse_quality_params(payload)
 
         try:
             bundle = build_ico_bundle(
                 image, sizes, fit_mode=fit_mode, safe_zone=safe_zone,
-                background=background, opaque_pad=opaque_pad,
+                background=background, opaque_pad=opaque_pad, padding=padding,
             )
         except IcogenError:
             raise

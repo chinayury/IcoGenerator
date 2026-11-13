@@ -22,10 +22,13 @@ from .config import load_config, resolve_output_dir
 from .core import (
     ICO_SIZES,
     MASKABLE_SAFE_ZONE,
+    MAX_PADDING,
     MAX_SAFE_ZONE,
+    MIN_PADDING,
     MIN_SAFE_ZONE,
     PRESET_SIZE_SETS,
     SUPPORTED_INPUT_FORMATS,
+    build_site_assets_zip,
     build_ico,
     estimate_ico_cost,
     quality_hints,
@@ -140,6 +143,19 @@ def _parse_safe_zone(text: str) -> float:
     return value
 
 
+def _parse_padding(text: str) -> float:
+    """解析通用留白比例并做范围校验（借鉴要点 A1）。"""
+    try:
+        value = float(text)
+    except (TypeError, ValueError) as exc:
+        raise IcogenError(f"留白比例必须是数字：{text}") from exc
+    if not (MIN_PADDING <= value <= MAX_PADDING):
+        raise IcogenError(
+            f"留白比例必须在 {MIN_PADDING} 至 {MAX_PADDING} 之间：{text}"
+        )
+    return value
+
+
 def cmd_convert(args: argparse.Namespace) -> int:
     """命令行转换：支持单文件与目录批量。"""
     config = load_config(args.config)
@@ -162,14 +178,24 @@ def cmd_convert(args: argparse.Namespace) -> int:
         return 1
 
     fit_mode = args.fit
+    padding = _parse_padding(args.padding)
     failures = 0
     total_bytes = 0
 
     if args.dry_run:
         _print("预演模式：只生成到内存并报告，不写盘。")
-        _print(f"  适配策略 {fit_mode}　安全区 {safe_zone:.2f}　"
-              f"留白 #{background[0]:02x}{background[1]:02x}{background[2]:02x}"
+        _print(f"  适配策略 {fit_mode}　安全区 {safe_zone:.2f}　留白比例 {padding:.2f}　"
+              f"颜色 #{background[0]:02x}{background[1]:02x}{background[2]:02x}"
               f"（不透明：{'是' if args.pad_opaque else '否'}）")
+
+    # --site-assets 所需的一次性参数（与 ICO 共用同一套适配参数）
+    merge_manifest_text = None
+    if args.site_assets and args.merge_manifest:
+        merge_path = Path(args.merge_manifest)
+        if not merge_path.is_file():
+            _print(f"错误：--merge-manifest 文件不存在 {merge_path}", err=True)
+            return 1
+        merge_manifest_text = merge_path.read_text(encoding="utf-8")
 
     for path in files:
         try:
@@ -177,6 +203,7 @@ def cmd_convert(args: argparse.Namespace) -> int:
             data = build_ico(
                 image, sizes, fit_mode=fit_mode, safe_zone=safe_zone,
                 background=background, opaque_pad=args.pad_opaque,
+                padding=padding,
             )
             produced = read_ico_sizes(data)
 
@@ -202,6 +229,30 @@ def cmd_convert(args: argparse.Namespace) -> int:
             total_bytes += record.size
             _print(f"✓ {path.name} -> {record.filename} "
                   f"({record.size:,} 字节, {len(produced)} 个尺寸)")
+
+            if args.site_assets:
+                # 站点物料包与 ICO 共用同一套参数（借鉴要点 B1：CLI-first）
+                source_svg = path.read_bytes() if path.suffix.lower() == ".svg" else None
+                zip_data = build_site_assets_zip(
+                    image,
+                    ico_sizes=sizes,
+                    fit_mode=fit_mode,
+                    include_maskable=not args.no_maskable,
+                    name=args.app_name,
+                    theme_color=args.theme_color,
+                    safe_zone=safe_zone,
+                    background=background,
+                    opaque_pad=args.pad_opaque,
+                    padding=padding,
+                    source_svg=source_svg,
+                    existing_manifest=merge_manifest_text,
+                )
+                bundle_record = store.save_bundle(
+                    zip_data, base_name=f"{path.stem}-site-assets"
+                )
+                total_bytes += bundle_record.size
+                _print(f"  ↳ 站点物料包 {bundle_record.filename} "
+                      f"({bundle_record.size:,} 字节)")
         except IcogenError as exc:
             failures += 1
             _print(f"✗ {path.name}: {exc}", err=True)
@@ -332,7 +383,7 @@ def cmd_doctor(args: argparse.Namespace) -> int:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="icogen",
-        description="IcoGenerator —— 多尺寸 ICO 图标生成器 v0.1.0",
+        description=f"IcoGenerator —— 多尺寸 ICO 图标生成器 v{__version__}",
     )
     parser.add_argument("--version", action="version", version=f"icogen {__version__}")
     parser.add_argument("-v", "--verbose", action="store_true", help="输出调试日志")
@@ -356,10 +407,22 @@ def build_parser() -> argparse.ArgumentParser:
                            default="cover", help="非正方形图片的适配方式")
     p_convert.add_argument("--safe-zone", default=str(MASKABLE_SAFE_ZONE),
                            help=f"maskable 模式安全区比例（{MIN_SAFE_ZONE}-{MAX_SAFE_ZONE}）")
+    p_convert.add_argument("--padding", default=str(MIN_PADDING),
+                           help=f"内容留白比例，0 即铺满（{MIN_PADDING}-{MAX_PADDING}，如 0.1）")
     p_convert.add_argument("--background", default="#ffffff",
                            help="留白填充色，6 位十六进制，如 #ffffff")
     p_convert.add_argument("--pad-opaque", action="store_true",
-                           help="contain 模式留白使用不透明背景色（默认透明留边）")
+                           help="留白使用不透明背景色（默认透明留边）")
+    p_convert.add_argument("--site-assets", action="store_true",
+                           help="同时输出完整站点物料包 ZIP（favicon/manifest/磁贴等）")
+    p_convert.add_argument("--no-maskable", action="store_true",
+                           help="站点物料包不包含 maskable 安全区变体")
+    p_convert.add_argument("--app-name", default="My App",
+                           help="站点物料包 manifest 中的应用名")
+    p_convert.add_argument("--theme-color", default="#ffffff",
+                           help="站点物料包主题色，6 位十六进制")
+    p_convert.add_argument("--merge-manifest", default=None,
+                           help="既有 manifest.json 路径：只合并本项目 icons 条目，其余字段保留")
     p_convert.add_argument("--dry-run", action="store_true",
                            help="预演：生成到内存并报告体积与警告，不写盘")
     p_convert.set_defaults(func=cmd_convert)

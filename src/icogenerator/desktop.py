@@ -33,11 +33,14 @@ if __package__ in (None, ""):
 
 from PIL import Image, ImageTk
 
+from . import __version__ as VERSION
 from .config import AppConfig, load_config, resolve_output_dir, save_config
 from .core import (
     ICO_SIZES,
     MASKABLE_SAFE_ZONE,
+    MAX_PADDING,
     MAX_SAFE_ZONE,
+    MIN_PADDING,
     MIN_SAFE_ZONE,
     PRESET_SIZE_SETS,
     build_ico,
@@ -54,8 +57,6 @@ from .core.imaging import normalize_to_square, open_image_file
 from .storage import LocalStore
 
 LOGGER = logging.getLogger(__name__)
-
-VERSION = "0.1.0"
 
 # 支持的输入格式（决定文件对话框过滤器）
 FILETYPES = [
@@ -333,6 +334,11 @@ class IcoGeneratorApp:
         self.pad_opaque_var = tk.BooleanVar(value=False)
         ttk.Checkbutton(param_row, text="补边不透明", variable=self.pad_opaque_var
                         ).pack(side=tk.LEFT, padx=(12, 0))
+        ttk.Label(param_row, text="留白比例：", style="Body.TLabel").pack(
+            side=tk.LEFT, padx=(12, 0))
+        self.padding_var = tk.StringVar(value=f"{MIN_PADDING:.2f}")
+        ttk.Spinbox(param_row, from_=MIN_PADDING, to=MAX_PADDING, increment=0.05,
+                    textvariable=self.padding_var, width=6).pack(side=tk.LEFT)
 
         # 一站式站点物料包（调研要点 3：同类项目均只输出 ICO）
         self.site_assets_var = tk.BooleanVar(value=False)
@@ -462,8 +468,8 @@ class IcoGeneratorApp:
                 return value
         return "cover"
 
-    def _quality_params(self) -> tuple[float, tuple[int, int, int], bool]:
-        """读取安全区比例、留白颜色与补边透明度。
+    def _quality_params(self) -> tuple[float, tuple[int, int, int], bool, float]:
+        """读取安全区比例、留白颜色、补边透明度与通用留白比例。
 
         非法值在生成前就报错，而不是等产出不可用的结果（docs/09 要点 6.2）。
         """
@@ -474,6 +480,15 @@ class IcoGeneratorApp:
         if not (MIN_SAFE_ZONE <= safe_zone <= MAX_SAFE_ZONE):
             raise IcogenError(
                 f"安全区比例必须在 {MIN_SAFE_ZONE} 至 {MAX_SAFE_ZONE} 之间：{safe_zone}"
+            )
+
+        try:
+            padding = float(self.padding_var.get())
+        except (TypeError, ValueError) as exc:
+            raise IcogenError(f"留白比例必须是数字：{self.padding_var.get()}") from exc
+        if not (MIN_PADDING <= padding <= MAX_PADDING):
+            raise IcogenError(
+                f"留白比例必须在 {MIN_PADDING} 至 {MAX_PADDING} 之间：{padding}"
             )
 
         text = (self.background_var.get() or "").strip().lstrip("#")
@@ -488,7 +503,7 @@ class IcoGeneratorApp:
                 f"留白颜色不是合法十六进制：{self.background_var.get()}"
             ) from exc
 
-        return safe_zone, background, bool(self.pad_opaque_var.get())
+        return safe_zone, background, bool(self.pad_opaque_var.get()), padding
 
     # ---------------- 偏好持久化 ----------------
 
@@ -521,6 +536,7 @@ class IcoGeneratorApp:
                     self.preset_var.set(label)
 
             self.site_assets_var.set(bool(ui.site_assets))
+            self.padding_var.set(f"{float(ui.padding or 0.0):.2f}")
 
             LOGGER.info(
                 "已恢复界面偏好：preset=%s fit=%s sizes=%s",
@@ -528,6 +544,14 @@ class IcoGeneratorApp:
             )
         except Exception as exc:  # noqa: BLE001 - 偏好恢复失败不应阻断启动
             LOGGER.warning("恢复界面偏好失败，使用默认值：%s", exc)
+
+    def _parse_padding_pref(self) -> float:
+        """把当前留白比例控件值转为可持久化的数字，非法值回退 0。"""
+        try:
+            value = float(self.padding_var.get())
+        except (TypeError, ValueError):
+            return 0.0
+        return value if MIN_PADDING <= value <= MAX_PADDING else 0.0
 
     def _save_preferences(self) -> None:
         """保存当前选择，下次启动恢复。"""
@@ -537,6 +561,7 @@ class IcoGeneratorApp:
         try:
             selected = self._selected_sizes()
             ui.fit_mode = self._current_fit_mode()
+            ui.padding = self._parse_padding_pref()
             ui.sizes = [str(s[0]) for s in selected]
             ui.site_assets = bool(self.site_assets_var.get())
             ui.window_geometry = self.root.geometry()
@@ -654,14 +679,14 @@ class IcoGeneratorApp:
 
         try:
             fit_mode = self._current_fit_mode()
-            safe_zone, background, opaque_pad = self._quality_params()
+            safe_zone, background, opaque_pad, padding = self._quality_params()
             merged = build_ico(
                 self.image, sizes, fit_mode=fit_mode, safe_zone=safe_zone,
-                background=background, opaque_pad=opaque_pad,
+                background=background, opaque_pad=opaque_pad, padding=padding,
             )
             bundle = build_ico_bundle(
                 self.image, sizes, fit_mode=fit_mode, safe_zone=safe_zone,
-                background=background, opaque_pad=opaque_pad,
+                background=background, opaque_pad=opaque_pad, padding=padding,
             )
 
             record = self.store.save_bytes(
@@ -715,10 +740,10 @@ class IcoGeneratorApp:
                 return
 
             from .core.imaging import normalize_to_square
-            safe_zone, background, opaque_pad = self._quality_params()
+            safe_zone, background, opaque_pad, padding = self._quality_params()
             square = normalize_to_square(
                 source, mode=self._current_fit_mode(), background=background,
-                safe_zone=safe_zone, opaque_pad=opaque_pad,
+                safe_zone=safe_zone, opaque_pad=opaque_pad, padding=padding,
             )
 
             for index in range(len(sizes)):
@@ -758,10 +783,10 @@ class IcoGeneratorApp:
             return
 
         try:
-            safe_zone, background, opaque_pad = self._quality_params()
+            safe_zone, background, opaque_pad, padding = self._quality_params()
             square = normalize_to_square(
                 self.image, mode=self._current_fit_mode(), background=background,
-                safe_zone=safe_zone, opaque_pad=opaque_pad,
+                safe_zone=safe_zone, opaque_pad=opaque_pad, padding=padding,
             )
         except IcogenError as exc:
             messagebox.showwarning("参数有误", str(exc), parent=self.root)
@@ -822,7 +847,7 @@ class IcoGeneratorApp:
 
         try:
             sizes = self._selected_sizes() or None
-            safe_zone, background, opaque_pad = self._quality_params()
+            safe_zone, background, opaque_pad, padding = self._quality_params()
             data = build_site_assets_zip(
                 self.image,
                 ico_sizes=sizes or [(16, 16), (32, 32), (48, 48)],
@@ -830,6 +855,7 @@ class IcoGeneratorApp:
                 safe_zone=safe_zone,
                 background=background,
                 opaque_pad=opaque_pad,
+                padding=padding,
             )
             Path(path).write_bytes(data)
 
@@ -927,9 +953,35 @@ class IcoGeneratorApp:
         return event.action
 
 
+def _enable_windows_high_dpi() -> None:
+    """Windows 高 DPI 感知（借鉴要点 D1）。
+
+    必须在 ``tk.Tk()`` 之前调用：进程默认不声明 DPI 感知时，Windows 会对
+    整个窗口做位图拉伸，文字与图标在高分屏上发虚。Tk 8.6 自身不处理，
+    这里显式声明 per-monitor v2，失败逐级回落，最终失败也不阻断启动
+    （无 shcore 的旧系统只是维持原状）。
+    """
+    if sys.platform != "win32":
+        return
+    try:
+        import ctypes
+        windll = ctypes.windll.shcore  # noqa: SLF001 - Windows 专属 API
+        try:
+            windll.SetProcessDpiAwareness(2)   # PROCESS_PER_MONITOR_DPI_AWARE
+        except Exception:  # noqa: BLE001 - 旧系统不支持 per-monitor
+            windll.SetProcessDpiAwareness(1)   # SYSTEM_DPI_AWARE
+    except Exception:  # noqa: BLE001 - 无 shcore（Win7 等）维持默认
+        try:
+            import ctypes
+            ctypes.windll.user32.SetProcessDPIAware()
+        except Exception:  # noqa: BLE001
+            pass
+
+
 def main() -> int:
     """桌面版入口。"""
     _setup_logging()
+    _enable_windows_high_dpi()
     LOGGER.info("IcoGenerator 桌面版 v%s 启动", VERSION)
 
     try:

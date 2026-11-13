@@ -59,6 +59,22 @@ function fmtBytes(n) {
 
 const STATUS_TEXT = { pending: '待上传', uploaded: '已上传', failed: '上传失败' };
 
+/* 版本号单一来源是后端 /api/health，页面不硬编码，发版不再漏改。 */
+async function loadVersion() {
+  try {
+    const resp = await fetch('/api/health', { cache: 'no-store' });
+    const data = await resp.json();
+    if (data && data.version) {
+      const badge = $('versionBadge');
+      if (badge) badge.textContent = 'v' + data.version;
+      document.title = 'IcoGenerator · 管理控制台 v' + data.version;
+    }
+  } catch (e) {
+    /* 服务未就绪时保留占位，各卡片已有错误提示 */
+  }
+}
+loadVersion();
+
 function renderArtifacts(artifacts) {
   const tbody = $('artifactBody');
   tbody.textContent = '';   // 清空而非 innerHTML = ''

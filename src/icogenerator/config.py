@@ -141,6 +141,8 @@ class UiPreferences:
     preset: str = ""
     # 上次选择的非正方形适配模式（cover / contain / maskable / stretch）
     fit_mode: str = "cover"
+    # 上次设置的内容留白比例（0 即铺满；借鉴要点 A1）
+    padding: float = 0.0
     # 上次勾选的尺寸，如 ["16", "32", "48"]
     sizes: list = field(default_factory=list)
     # 上次是否勾选「生成站点物料包」
@@ -151,6 +153,8 @@ class UiPreferences:
     def validate(self) -> None:
         if self.fit_mode and self.fit_mode not in ("cover", "contain", "maskable", "stretch"):
             raise StorageConfigError(f"未知的适配模式：{self.fit_mode}")
+        if not (0.0 <= self.padding <= 0.6):
+            raise StorageConfigError(f"留白比例必须在 0-0.6 之间：{self.padding}")
         if len(self.sizes) > 32:
             raise StorageConfigError("勾选的尺寸过多，配置可能已损坏")
 

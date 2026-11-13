@@ -18,7 +18,12 @@ from typing import Dict, Iterable, List, Sequence, Tuple
 from PIL import Image
 
 from .errors import IcogenError, NoSizeSelectedError
-from .imaging import MASKABLE_SAFE_ZONE, normalize_to_square, resize_for_ico
+from .imaging import (
+    MASKABLE_SAFE_ZONE,
+    MIN_PADDING,
+    normalize_to_square,
+    resize_for_ico,
+)
 
 # ICO 规范允许的尺寸上限；256x256 是 favicon 场景的实际最大值。
 MAX_ICO_EDGE = 256
@@ -116,6 +121,7 @@ def build_ico(
     safe_zone: float = MASKABLE_SAFE_ZONE,
     background: Tuple[int, int, int] = (255, 255, 255),
     opaque_pad: bool = False,
+    padding: float = MIN_PADDING,
 ) -> bytes:
     """把单张图像编码为多尺寸 ICO。
 
@@ -125,7 +131,8 @@ def build_ico(
         fit_mode: 非正方形源的适配方式，见 ``normalize_to_square``。
         safe_zone: ``maskable`` 模式的安全区比例，见 ``normalize_to_square``。
         background: 留白填充色 RGB。
-        opaque_pad: ``contain`` 模式留白是否不透明。
+        opaque_pad: 留白是否不透明。
+        padding: 通用内容留白比例，见 ``normalize_to_square``。
 
     Returns:
         完整的 ICO 文件字节。
@@ -144,7 +151,7 @@ def build_ico(
     target_sizes = _validate_sizes(sizes)
     square = normalize_to_square(
         image, mode=fit_mode, background=background,
-        safe_zone=safe_zone, opaque_pad=opaque_pad,
+        safe_zone=safe_zone, opaque_pad=opaque_pad, padding=padding,
     )
 
     # 关键：基准图升采样到最大目标边长，避免 Pillow 静默丢弃大尺寸。
@@ -189,6 +196,7 @@ def build_ico_bundle(
     safe_zone: float = MASKABLE_SAFE_ZONE,
     background: Tuple[int, int, int] = (255, 255, 255),
     opaque_pad: bool = False,
+    padding: float = MIN_PADDING,
 ) -> Dict[Tuple[int, int], bytes]:
     """为每个尺寸生成独立 ICO（旧版「下载全部」功能）。
 
@@ -198,7 +206,7 @@ def build_ico_bundle(
     target_sizes = _validate_sizes(sizes)
     square = normalize_to_square(
         image, mode=fit_mode, background=background,
-        safe_zone=safe_zone, opaque_pad=opaque_pad,
+        safe_zone=safe_zone, opaque_pad=opaque_pad, padding=padding,
     )
 
     bundle: Dict[Tuple[int, int], bytes] = {}
@@ -226,6 +234,7 @@ def make_png_preview(
     safe_zone: float = MASKABLE_SAFE_ZONE,
     background: Tuple[int, int, int] = (255, 255, 255),
     opaque_pad: bool = False,
+    padding: float = MIN_PADDING,
 ) -> bytes:
     """生成预览用 PNG。
 
@@ -235,7 +244,7 @@ def make_png_preview(
     """
     square = normalize_to_square(
         image, mode=fit_mode, background=background,
-        safe_zone=safe_zone, opaque_pad=opaque_pad,
+        safe_zone=safe_zone, opaque_pad=opaque_pad, padding=padding,
     )
     side = min(max_edge, square.width)
     preview = square.resize((side, side), Image.Resampling.LANCZOS)

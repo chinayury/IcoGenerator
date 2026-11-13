@@ -6,6 +6,49 @@
 
 ---
 
+## [v0.1.1] — 2026-11-13 同类项目调研借鉴优化
+
+基于对 16 个同类开源项目的两轮筛选与 6 个入选项目深读（详见
+[docs/06-同类项目调研与借鉴要点](docs/06-同类项目调研与借鉴要点.md)），
+落地 6 项可执行借鉴点，全部功能向后兼容。
+
+### 新增
+
+- **通用内容留白比例 `padding`**（借鉴 pwa-asset-generator 的默认 10% padding）：
+  cover / contain 模式下内容缩至 `(1-padding)` 居中，四周留出呼吸空间；
+  maskable / stretch 保持各自语义不参与。全链路打通：核心引擎、CLI `--padding`、
+  服务端 `/api/generate` / `/api/bundle` / `/api/site-assets`、网页版控件、
+  桌面版控件，并随界面偏好持久化
+- **CLI 站点物料包输出**（借鉴 pwa-asset-generator / vite-pwa 的 CLI-first 定位）：
+  `icogen convert --site-assets` 一条命令产出完整站点物料 ZIP，
+  支持 `--app-name` / `--theme-color` / `--no-maskable`，
+  弥补四入口中 CLI 缺站点物料包的能力空档
+- **SVG favicon 透传**（借鉴 favycon）：源图为 SVG 时物料包附带 `favicon.svg`，
+  HTML 引用片段追加矢量 favicon link，支持该能力的浏览器优先用矢量渲染
+- **manifest 智能合并**（借鉴 pwa-asset-generator 的 manifest 自动更新，
+  收敛为保守变体）：`merge_manifest()` 只增改 icons 数组、保留用户其余字段；
+  CLI 经 `--merge-manifest <path>` 显式触发，服务端 API 经 `existing_manifest` 字段触发
+- **桌面版 Windows 高 DPI 感知**（借鉴 Image_To_Icon_Converter）：
+  `tk.Tk()` 之前声明 per-monitor DPI awareness，高分屏文字与图标不再发虚
+
+### 改进
+
+- **版本号收敛为单一来源**：原先散落 7 处（含两个 HTML 标题、CLI 描述、
+  server / desktop 的独立常量），现统一由 `__init__.py` 声明，
+  server / desktop 导入使用；HTML 标题与版本徽章改由前端从 `/api/health`
+  动态填充，后续发版不再有漏改点
+- 站点物料包自说明清单（MANIFEST.txt）增加留白比例参数记录
+- `UiPreferences` 新增 `padding` 字段（0–0.6 校验），桌面版随生成参数持久化
+
+### 兼容性
+
+- `padding` 默认 0，与历史产出逐字节一致（不留白时不引入额外重采样）
+- `_parse_quality_params` 返回值从三元组变为四元组（含 padding），
+  仅影响 server 内部调用与桌面版 `_quality_params`
+- 其余接口签名、产物形态、配置文件结构均向后兼容
+
+---
+
 ## [v0.1.0] — 2026-11-07 定版（首个正式稳定版）
 
 首个正式稳定版基于对旧版的全量排查重建：修复 17 项缺陷，新增 20 项功能，
