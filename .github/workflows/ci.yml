@@ -56,7 +56,9 @@ jobs:
             sleep 0.5
           done
           cat health.json
-          grep -q '"version": "0.1.0"' health.json
+          # 版本从 pyproject.toml 动态读取，不再硬编码（版本单一来源整改）
+          APP_VERSION=$(sed -n 's/^version = "\(.*\)"/\1/p' pyproject.toml)
+          grep -q "\"version\": \"$APP_VERSION\"" health.json
           curl -fsS -o /dev/null http://127.0.0.1:8765/app
           curl -fsS -o /dev/null http://127.0.0.1:8765/admin
           echo "web/API smoke test passed"
@@ -98,5 +100,7 @@ jobs:
             sleep 1
           done
           cat health.json
-          grep -q '"version": "0.1.0"' health.json
+          # 版本从 pyproject.toml 动态读取，不再硬编码（版本单一来源整改）
+          APP_VERSION=$(sed -n 's/^version = "\(.*\)"/\1/p' pyproject.toml)
+          grep -q "\"version\": \"$APP_VERSION\"" health.json
           docker logs icogenerator-ci | tail -20
