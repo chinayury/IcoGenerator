@@ -28,6 +28,7 @@ from .imaging import (
     resize_for_ico,
 )
 from .icons import (
+    BITMAP_FORMATS,
     PRESET_SIZE_SETS,
     ICO_SIZES,
     build_ico,
@@ -88,6 +89,7 @@ __all__ = [
     "resize_for_ico",
     "PRESET_SIZE_SETS",
     "ICO_SIZES",
+    "BITMAP_FORMATS",
     "build_ico",
     "build_ico_bundle",
     "make_png_preview",

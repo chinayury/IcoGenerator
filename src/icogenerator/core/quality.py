@@ -140,7 +140,9 @@ def cost_hints(size_bytes: int, sizes: Sequence[Tuple[int, int]]) -> List[Qualit
             LEVEL_WARNING,
             "ico_over_budget",
             f"当前 {size_bytes:,} 字节，已超过 favicon 场景的软预算 "
-            f"{SOFT_ICO_BUDGET_BYTES // 1024}KB，请确认是否真的需要这些尺寸。",
+            f"{SOFT_ICO_BUDGET_BYTES // 1024}KB，请确认是否真的需要这些尺寸；"
+            "如需压缩体积可用 PNG 帧编码（--bitmap-format png，"
+            "Windows XP 等旧系统不识别）。",
         ))
     elif size_bytes >= SOFT_ICO_BUDGET_BYTES * NEAR_LIMIT_RATIO:
         hints.append(QualityHint(

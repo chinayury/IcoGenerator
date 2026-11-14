@@ -113,6 +113,12 @@ def validate_sizes(sizes: Iterable[Tuple[int, int]]) -> List[Tuple[int, int]]:
     return _validate_sizes(sizes)
 
 
+# ICO 帧编码格式。bmp 为 Pillow 默认（历史行为）；png 帧在同等画质下体积显著更小
+# （借鉴 duma520/Image_To_Icon_Converter 的实现：现代 Windows 10/11 均支持 PNG 帧，
+# 仅 Windows XP 等旧系统不识别），通过 bitmap_format 参数显式开启。
+BITMAP_FORMATS: Tuple[str, str] = ("bmp", "png")
+
+
 def build_ico(
     image: Image.Image,
     sizes: Sequence[Tuple[int, int]],
@@ -122,6 +128,7 @@ def build_ico(
     background: Tuple[int, int, int] = (255, 255, 255),
     opaque_pad: bool = False,
     padding: float = MIN_PADDING,
+    bitmap_format: str = "bmp",
 ) -> bytes:
     """把单张图像编码为多尺寸 ICO。
 
@@ -133,6 +140,8 @@ def build_ico(
         background: 留白填充色 RGB。
         opaque_pad: 留白是否不透明。
         padding: 通用内容留白比例，见 ``normalize_to_square``。
+        bitmap_format: 帧编码格式，``bmp``（默认，历史行为）或 ``png``
+            （同等画质体积更小，仅旧系统如 Windows XP 不识别）。
 
     Returns:
         完整的 ICO 文件字节。
@@ -148,6 +157,8 @@ def build_ico(
        基准 16px 配 6 个尺寸，实测只写出 1 个，且不报错。
        因此先把基准图升采样到 max(sizes)，再交给 Pillow 缩放出全部尺寸。
     """
+    if bitmap_format not in BITMAP_FORMATS:
+        raise ValueError(f"未知的 ICO 帧格式：{bitmap_format}")
     target_sizes = _validate_sizes(sizes)
     square = normalize_to_square(
         image, mode=fit_mode, background=background,
@@ -160,7 +171,8 @@ def build_ico(
 
     buffer = io.BytesIO()
     try:
-        base.save(buffer, format="ICO", sizes=target_sizes)
+        base.save(buffer, format="ICO", sizes=target_sizes,
+                  bitmap_format=bitmap_format)
     except IcogenError:
         raise
     except Exception as exc:  # noqa: BLE001 - 统一转换为业务异常并保留原链
@@ -197,12 +209,15 @@ def build_ico_bundle(
     background: Tuple[int, int, int] = (255, 255, 255),
     opaque_pad: bool = False,
     padding: float = MIN_PADDING,
+    bitmap_format: str = "bmp",
 ) -> Dict[Tuple[int, int], bytes]:
     """为每个尺寸生成独立 ICO（旧版「下载全部」功能）。
 
     独立文件与合并文件用途不同：前者给需要单尺寸的场景，
     后者给 favicon。前台两个按钮都保留，功能不丢。
     """
+    if bitmap_format not in BITMAP_FORMATS:
+        raise ValueError(f"未知的 ICO 帧格式：{bitmap_format}")
     target_sizes = _validate_sizes(sizes)
     square = normalize_to_square(
         image, mode=fit_mode, background=background,
@@ -213,7 +228,10 @@ def build_ico_bundle(
     for size in target_sizes:
         buffer = io.BytesIO()
         try:
-            resize_for_ico(square, size).save(buffer, format="ICO", sizes=[size])
+            resize_for_ico(square, size).save(
+                buffer, format="ICO", sizes=[size],
+                bitmap_format=bitmap_format,
+            )
         except Exception as exc:  # noqa: BLE001
             raise IcogenError(
                 f"生成 {size[0]}x{size[1]} ICO 失败：{exc}"

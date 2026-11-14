@@ -30,6 +30,7 @@ from urllib.parse import parse_qs, urlparse
 from . import __version__ as VERSION
 from .config import AppConfig, save_config
 from .core import (
+    BITMAP_FORMATS,
     ICO_SIZES,
     MASKABLE_SAFE_ZONE,
     MAX_PADDING,
@@ -595,11 +596,12 @@ class IcoGenHandler(BaseHTTPRequestHandler):
         fit_mode = str(payload.get("fit_mode") or "cover")
         if fit_mode not in ("cover", "contain", "maskable", "stretch"):
             raise IcogenError(f"未知的 fit_mode：{fit_mode}")
-        safe_zone, background, opaque_pad, padding = self._parse_quality_params(payload)
+        safe_zone, background, opaque_pad, padding, bitmap_format = self._parse_quality_params(payload)
 
         combined = build_ico(
             image, sizes, fit_mode=fit_mode, safe_zone=safe_zone,
             background=background, opaque_pad=opaque_pad, padding=padding,
+            bitmap_format=bitmap_format,
         )
         analysis = analyze_source(image, sizes)
         hints = quality_hints(image, sizes, combined)
@@ -638,8 +640,8 @@ class IcoGenHandler(BaseHTTPRequestHandler):
 
     def _parse_quality_params(
         self, payload: Dict[str, Any]
-    ) -> Tuple[float, Tuple[int, int, int], bool, float]:
-        """解析安全区比例、留白颜色、补边透明度与通用留白比例。
+    ) -> Tuple[float, Tuple[int, int, int], bool, float, str]:
+        """解析安全区比例、留白颜色、补边透明度、通用留白比例与 ICO 帧格式。
 
         颜色与比例的非法值在这里就失败，而不是等生成完才发现问题
         （借鉴 altophp/favicon 的「生成前校验」，docs/09 要点 6.2）。
@@ -661,6 +663,12 @@ class IcoGenHandler(BaseHTTPRequestHandler):
                 f"padding 必须在 {MIN_PADDING} 至 {MAX_PADDING} 之间：{padding}"
             )
 
+        bitmap_format = str(payload.get("bitmap_format") or "bmp")
+        if bitmap_format not in BITMAP_FORMATS:
+            raise IcogenError(
+                f"bitmap_format 仅支持 {' / '.join(BITMAP_FORMATS)}：{bitmap_format}"
+            )
+
         color_text = str(payload.get("background") or "#ffffff").strip().lstrip("#")
         if len(color_text) != 6:
             raise IcogenError(
@@ -673,7 +681,7 @@ class IcoGenHandler(BaseHTTPRequestHandler):
                 f"background 不是合法十六进制颜色：{payload.get('background')}"
             ) from exc
 
-        return safe_zone, background, bool(payload.get("opaque_pad")), padding
+        return safe_zone, background, bool(payload.get("opaque_pad")), padding, bitmap_format
 
     def _handle_update_config(self) -> None:
         """更新对象存储与调度配置。"""
@@ -797,10 +805,11 @@ class IcoGenHandler(BaseHTTPRequestHandler):
         fit_mode = str(payload.get("fit_mode") or "cover")
         if fit_mode not in ("cover", "contain", "maskable", "stretch"):
             raise IcogenError(f"未知的 fit_mode：{fit_mode}")
-        safe_zone, background, opaque_pad, padding = self._parse_quality_params(payload)
+        safe_zone, background, opaque_pad, padding, _bmp = self._parse_quality_params(payload)
 
         # 源图本身是 SVG 时把原始字节透传进物料包（favicon.svg，借鉴要点 C1）；
         # 调用方也可显式传入既有 manifest.json 文本，只合并 icons 条目（要点 A3）。
+        # 物料包内 favicon.ico 保持 BMP 帧（兼容优先），bitmap_format 不透传。
         source_svg = raw if str(payload.get("filename") or "").lower().endswith(".svg") else None
         existing_manifest = payload.get("existing_manifest")
         if existing_manifest is not None and not isinstance(existing_manifest, str):
@@ -850,12 +859,13 @@ class IcoGenHandler(BaseHTTPRequestHandler):
         fit_mode = str(payload.get("fit_mode") or "cover")
         if fit_mode not in ("cover", "contain", "maskable", "stretch"):
             raise IcogenError(f"未知的 fit_mode：{fit_mode}")
-        safe_zone, background, opaque_pad, padding = self._parse_quality_params(payload)
+        safe_zone, background, opaque_pad, padding, bitmap_format = self._parse_quality_params(payload)
 
         try:
             bundle = build_ico_bundle(
                 image, sizes, fit_mode=fit_mode, safe_zone=safe_zone,
                 background=background, opaque_pad=opaque_pad, padding=padding,
+                bitmap_format=bitmap_format,
             )
         except IcogenError:
             raise

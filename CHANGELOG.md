@@ -6,6 +6,35 @@
 
 ---
 
+## [v0.1.3] — 2026-11-14 ICO PNG 帧格式选项
+
+维护循环复检（Issues 0 条、深筛项目无更新）后，采纳上轮深读中记录未采纳的
+ICO 帧编码优化点。详见
+[docs/06-同类项目调研与借鉴要点](docs/06-同类项目调研与借鉴要点.md) 附录。
+
+### 新增
+
+- **ICO 帧编码格式选项 `bitmap_format`**（借鉴
+  [duma520/Image_To_Icon_Converter](https://github.com/duma520/Image_To_Icon_Converter)
+  技术章节：现代 Windows 10/11 支持 PNG 压缩帧，仅 Windows XP 等旧系统不识别；
+  Pillow ≥8.1 原生支持）：
+  - CLI：`icogen convert --bitmap-format png`
+  - API：`POST /api/generate` 与 `POST /api/bundle` 新增 `bitmap_format` 字段
+    （非法值返回 400）
+  - 同等画质下体积显著减小，超体积软预算的质量提示会给出该建议
+
+### 改进
+
+- `ico_over_budget` 质量提示补充 PNG 帧压缩建议（含旧系统兼容性说明）
+
+### 兼容性
+
+- 默认仍为 `bmp` 帧，与历史产出逐字节一致；`png` 为显式 opt-in
+- 站点物料包内 favicon.ico 保持 BMP 帧（兼容优先），不受该选项影响
+- Windows XP 等旧系统不识别 PNG 帧——追求最大兼容时继续使用默认 bmp
+
+---
+
 ## [v0.1.2] — 2026-11-14 同类项目复检借鉴优化
 
 按维护循环对 6 个深筛项目复检（无显著更新）、Issues 巡检（0 条开放）、新候选检索，

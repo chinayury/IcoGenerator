@@ -20,6 +20,7 @@ from pathlib import Path
 from . import __version__
 from .config import load_config, resolve_output_dir
 from .core import (
+    BITMAP_FORMATS,
     ICO_SIZES,
     MASKABLE_SAFE_ZONE,
     MAX_PADDING,
@@ -223,7 +224,7 @@ def cmd_convert(args: argparse.Namespace) -> int:
             data = build_ico(
                 image, sizes, fit_mode=fit_mode, safe_zone=safe_zone,
                 background=background, opaque_pad=args.pad_opaque,
-                padding=padding,
+                padding=padding, bitmap_format=args.bitmap_format,
             )
             produced = read_ico_sizes(data)
 
@@ -455,6 +456,9 @@ def build_parser() -> argparse.ArgumentParser:
                            help="目录输入时递归扫描子目录（仅处理支持的图片格式）")
     p_convert.add_argument("--png-sizes", default=None,
                            help="额外输出独立 PNG，尺寸逗号分隔，如 16,32,256（1-1024）")
+    p_convert.add_argument("--bitmap-format", choices=BITMAP_FORMATS, default="bmp",
+                           help="ICO 帧编码格式：bmp（默认/最大兼容）或 png（体积更小，"
+                                "Windows XP 等旧系统不识别）")
     p_convert.add_argument("--site-assets", action="store_true",
                            help="同时输出完整站点物料包 ZIP（favicon/manifest/磁贴等）")
     p_convert.add_argument("--no-maskable", action="store_true",

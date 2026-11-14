@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "icogenerator"
-version = "0.1.2"
+version = "0.1.3"
 description = "多尺寸 ICO 图标生成器：桌面版 GUI + 本地网页版 + 管理控制台"
 readme = "README.md"
 requires-python = ">=3.10"
