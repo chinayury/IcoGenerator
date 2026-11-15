@@ -56,6 +56,12 @@ MANIFEST_FILENAME = "MANIFEST.txt"
 # 矢量 favicon 文件名（源图为 SVG 时随物料包附带，借鉴要点 C1）
 SVG_FAVICON_FILENAME = "favicon.svg"
 
+# 站点物料包档位。full 为完整集（历史行为）；minimal 借鉴 vite-pwa
+# minimal2023Preset 的「现代最小物料集」思想：只保留 favicon.ico、独立 16/32、
+# apple-touch、android 192/512、manifest.json、site-icon.html 与自说明清单，
+# 去掉 mstile / browserconfig / maskable 变体。
+SITE_ASSET_SETS: Tuple[str, str] = ("full", "minimal")
+
 
 def png_bytes(
     image: Image.Image,
@@ -124,7 +130,9 @@ def build_manifest(
     return json.dumps(manifest, indent=2, ensure_ascii=False)
 
 
-def merge_manifest(existing_text: str) -> str:
+def merge_manifest(
+    existing_text: str, *, include_maskable: bool = True
+) -> str:
     """把本项目的图标物料合并进用户既有的 manifest.json（借鉴要点 A3）。
 
     设计原则（与 pwa-asset-generator 的 manifest 自动更新相比刻意保守）：
@@ -134,6 +142,8 @@ def merge_manifest(existing_text: str) -> str:
 
     Args:
         existing_text: 用户现有 manifest.json 的文本内容。
+        include_maskable: minimal 档不产出 maskable 文件时传 False，
+            避免合并后的 manifest 引用不存在的文件。
 
     Returns:
         合并后的 manifest.json 文本。
@@ -168,13 +178,14 @@ def merge_manifest(existing_text: str) -> str:
             "type": "image/png",
             "purpose": "any",
         },
-        {
+    ])
+    if include_maskable:
+        kept.append({
             "src": "android-chrome-512x512-maskable.png",
             "sizes": "512x512",
             "type": "image/png",
             "purpose": "maskable",
-        },
-    ])
+        })
 
     merged = dict(data)
     merged["icons"] = kept
@@ -196,13 +207,20 @@ def build_browserconfig(tile_color: str = DEFAULT_THEME_COLOR) -> str:
     )
 
 
-def build_html_snippet(*, include_manifest: bool = True, include_svg: bool = False) -> str:
+def build_html_snippet(
+    *,
+    include_manifest: bool = True,
+    include_svg: bool = False,
+    include_mstile: bool = True,
+) -> str:
     """生成可直接粘贴进 index.html 的引用片段。
 
     Android 尺寸由 ``manifest.json`` 声明，无需在 HTML 里重复 link
     （Android Chrome 只认 manifest 中的 icons，不读 <link rel="icon">）。
     源图为 SVG 时 ``include_svg`` 会追加矢量 favicon 引用：支持它的浏览器
     优先用矢量渲染，不支持的老浏览器回落到 ICO（借鉴要点 C1）。
+    minimal 档不产出 browserconfig.xml，``include_mstile`` 置 False
+    以免片段引用不存在的文件。
     """
     lines = [
         '<!-- 将以下文件与你的页面放在同一目录 -->',
@@ -214,9 +232,12 @@ def build_html_snippet(*, include_manifest: bool = True, include_svg: bool = Fal
         '<link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png">',
         '<link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png">',
         '<link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">',
-        '<meta name="msapplication-config" content="/browserconfig.xml">',
-        '<meta name="msapplication-TileColor" content="%s">' % DEFAULT_THEME_COLOR,
     ])
+    if include_mstile:
+        lines.extend([
+            '<meta name="msapplication-config" content="/browserconfig.xml">',
+            '<meta name="msapplication-TileColor" content="%s">' % DEFAULT_THEME_COLOR,
+        ])
     if include_manifest:
         lines.insert(1, '<link rel="manifest" href="/manifest.json">')
         lines.append(
@@ -303,6 +324,7 @@ def build_site_assets(
     padding: float = MIN_PADDING,
     source_svg: Optional[bytes] = None,
     existing_manifest: Optional[str] = None,
+    asset_set: str = "full",
 ) -> Dict[str, bytes]:
     """生成完整站点物料包。
 
@@ -310,7 +332,8 @@ def build_site_assets(
         image: 已解码的源图。
         ico_sizes: favicon.ico 内含的尺寸。
         fit_mode: 非正方形适配策略（cover / contain / maskable / stretch）。
-        include_maskable: 是否额外产出 maskable 变体（供 PWA 安全裁切）。
+        include_maskable: 是否额外产出 maskable 变体（供 PWA 安全裁切）；
+            minimal 档强制跳过。
         name: manifest 中的应用名。
         theme_color: 主题色，同时用于 manifest 与磁贴色。
         safe_zone: maskable 变体的安全区比例。
@@ -321,13 +344,22 @@ def build_site_assets(
             并在 HTML 片段中追加矢量引用（借鉴要点 C1）。
         existing_manifest: 用户既有 manifest.json 文本；提供时只合并本项目的
             icons 条目，其余字段原样保留（借鉴要点 A3）。
+        asset_set: ``full``（完整集，默认/历史行为）或 ``minimal``
+            （借鉴 vite-pwa minimal2023Preset：去掉 mstile / browserconfig /
+            maskable 的现代最小物料集）。
 
     Returns:
         ``{文件名: 字节内容}``，可直接写盘或打包 ZIP。
 
     Raises:
         IcogenError: 尺寸非法。
+        ValueError: asset_set 非法。
     """
+    if asset_set not in SITE_ASSET_SETS:
+        raise ValueError(f"未知的站点物料包档位：{asset_set}")
+    minimal = asset_set == "minimal"
+    # minimal 档强制不产出 maskable（物料集中没有该文件，manifest 也不引用）
+    include_maskable = include_maskable and not minimal
     validate_sizes(ico_sizes)
 
     assets: Dict[str, bytes] = {}
@@ -366,28 +398,34 @@ def build_site_assets(
             background=background,
         )
 
-    # 6) Windows 磁贴
-    assets["mstile-150x150.png"] = png_bytes(
-        image, (MSTILE_SIZE, MSTILE_SIZE), fit_mode, safe_zone=safe_zone,
-        background=background, opaque_pad=opaque_pad, padding=padding,
-    )
+    # 6) Windows 磁贴（minimal 档跳过）
+    if not minimal:
+        assets["mstile-150x150.png"] = png_bytes(
+            image, (MSTILE_SIZE, MSTILE_SIZE), fit_mode, safe_zone=safe_zone,
+            background=background, opaque_pad=opaque_pad, padding=padding,
+        )
 
     # 7) 矢量 favicon：源图本身是 SVG 时直接透传，现代浏览器优先用矢量渲染
     include_svg = bool(source_svg and _looks_like_svg(source_svg))
     if include_svg:
         assets[SVG_FAVICON_FILENAME] = source_svg
 
-    # 8) 配置文件与引用片段
-    assets["browserconfig.xml"] = build_browserconfig(theme_color).encode("utf-8")
+    # 8) 配置文件与引用片段（minimal 档无 browserconfig，HTML 不引用磁贴）
+    if not minimal:
+        assets["browserconfig.xml"] = build_browserconfig(theme_color).encode("utf-8")
     if existing_manifest:
         # 用户既有 manifest：只合并 icons，其余字段原样保留
-        assets["manifest.json"] = merge_manifest(existing_manifest).encode("utf-8")
+        assets["manifest.json"] = merge_manifest(
+            existing_manifest, include_maskable=include_maskable,
+        ).encode("utf-8")
     else:
         assets["manifest.json"] = build_manifest(
             name=name, theme_color=theme_color,
             background_color=DEFAULT_BACKGROUND_COLOR,
         ).encode("utf-8")
-    assets["site-icon.html"] = build_html_snippet(include_svg=include_svg).encode("utf-8")
+    assets["site-icon.html"] = build_html_snippet(
+        include_svg=include_svg, include_mstile=not minimal,
+    ).encode("utf-8")
 
     # 9) 自说明清单：脱离生成环境后仍能读懂每个文件与所用参数
     assets[MANIFEST_FILENAME] = build_manifest_text(
@@ -414,6 +452,7 @@ def build_site_assets_zip(
     padding: float = MIN_PADDING,
     source_svg: Optional[bytes] = None,
     existing_manifest: Optional[str] = None,
+    asset_set: str = "full",
 ) -> bytes:
     """生成站点物料包并打包为 ZIP（内存内完成，不落临时文件）。"""
     from io import BytesIO
@@ -432,6 +471,7 @@ def build_site_assets_zip(
         padding=padding,
         source_svg=source_svg,
         existing_manifest=existing_manifest,
+        asset_set=asset_set,
     )
 
     buffer = BytesIO()

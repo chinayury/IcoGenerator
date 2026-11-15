@@ -6,6 +6,37 @@
 
 ---
 
+## [v0.1.4] — 2026-11-15 单文件输出语义与物料包精简档
+
+维护循环复检（Issues 0 条、深筛项目无更新）后，采纳已深读项目中尚未细化的
+输出语义与物料档位要点。详见
+[docs/06-同类项目调研与借鉴要点](docs/06-同类项目调研与借鉴要点.md) 附录。
+
+### 新增
+
+- **单文件输出语义**（借鉴
+  [duma520/Image_To_Icon_Converter](https://github.com/duma520/Image_To_Icon_Converter)
+  第 7 节「单文件指定完整路径」的输出位置语义）：
+  `icogen convert logo.png -o D:\apps\myapp\app.ico` 在单文件输入时把产物
+  **额外精确复制**到指定路径；本地 store 仍是真相源，记录不变
+- **站点物料包精简档**（借鉴 vite-pwa minimal2023Preset 的「现代最小物料集」）：
+  CLI `--site-assets-set minimal` 与 API `POST /api/site-assets` 的 `asset_set`
+  字段——minimal 档只保留 favicon.ico、独立 16/32、apple-touch、
+  android-192/512、manifest.json、site-icon.html 与 MANIFEST.txt，
+  去掉 mstile / browserconfig / maskable；HTML 片段与既有 manifest 合并
+  逻辑同步不引用缺失文件
+- **兼容性速览矩阵**（借鉴 favycon README 的兼容矩阵文档实践）：
+  docs/03 新增各产物在现代浏览器 / Win10-11 / XP 的兼容对照表
+
+### 兼容性
+
+- `--site-assets-set` / `asset_set` 默认 `full`，完整档产物与历史逐字节一致
+- minimal 为显式 opt-in；`include_maskable` 在 minimal 档强制视为 False
+- `-o` 以 .ico 结尾且多文件输入时不再把该路径误建为目录（改为按配置目录输出）；
+  单文件 + .ico 路径为新增语义，不影响原有目录用法
+
+---
+
 ## [v0.1.3] — 2026-11-14 ICO PNG 帧格式选项
 
 维护循环复检（Issues 0 条、深筛项目无更新）后，采纳上轮深读中记录未采纳的

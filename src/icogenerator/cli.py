@@ -28,6 +28,7 @@ from .core import (
     MIN_PADDING,
     MIN_SAFE_ZONE,
     PRESET_SIZE_SETS,
+    SITE_ASSET_SETS,
     SUPPORTED_INPUT_FORMATS,
     build_site_assets_zip,
     build_ico,
@@ -161,7 +162,11 @@ def _parse_padding(text: str) -> float:
 def cmd_convert(args: argparse.Namespace) -> int:
     """命令行转换：支持单文件与目录批量。"""
     config = load_config(args.config)
-    output_root = resolve_output_dir(config, args.output_dir)
+    # 单文件语义（借鉴 duma520 的「单文件指定完整路径」输出）：
+    # -o 以 .ico 结尾时不作为输出目录，避免误建同名目录；
+    # 仅在恰好处理一个文件时生效（见下），store 仍作为真相源。
+    ico_file_override = bool(args.output_dir) and str(args.output_dir).lower().endswith(".ico")
+    output_root = resolve_output_dir(config, None if ico_file_override else args.output_dir)
     store = LocalStore(output_root)
     sizes = _parse_sizes(args.sizes)
     background = _parse_color(args.background)
@@ -196,6 +201,12 @@ def cmd_convert(args: argparse.Namespace) -> int:
     if not files:
         _print(f"错误：{source} 下没有可处理的图片文件", err=True)
         return 1
+
+    # 单文件语义：恰好处理一个文件且 -o 指向 .ico 路径时，
+    # 额外把产物精确复制到该路径（store 记录保持不变）
+    explicit_target = (
+        Path(args.output_dir) if ico_file_override and len(files) == 1 else None
+    )
 
     failures = 0
     total_bytes = 0
@@ -269,6 +280,11 @@ def cmd_convert(args: argparse.Namespace) -> int:
                     total_bytes += png_record.size
                     _print(f"  ↳ {png_record.filename} ({png_record.size:,} 字节)")
 
+            if explicit_target:
+                explicit_target.parent.mkdir(parents=True, exist_ok=True)
+                explicit_target.write_bytes(data)
+                _print(f"  ↳ 已按单文件语义保存到 {explicit_target}")
+
             if args.site_assets:
                 # 站点物料包与 ICO 共用同一套参数（借鉴要点 B1：CLI-first）
                 source_svg = path.read_bytes() if path.suffix.lower() == ".svg" else None
@@ -285,6 +301,7 @@ def cmd_convert(args: argparse.Namespace) -> int:
                     padding=padding,
                     source_svg=source_svg,
                     existing_manifest=merge_manifest_text,
+                    asset_set=args.site_assets_set,
                 )
                 bundle_record = store.save_bundle(
                     zip_data, base_name=f"{path.stem}-site-assets"
@@ -461,6 +478,9 @@ def build_parser() -> argparse.ArgumentParser:
                                 "Windows XP 等旧系统不识别）")
     p_convert.add_argument("--site-assets", action="store_true",
                            help="同时输出完整站点物料包 ZIP（favicon/manifest/磁贴等）")
+    p_convert.add_argument("--site-assets-set", choices=SITE_ASSET_SETS, default="full",
+                           help="站点物料包档位：full（完整）或 minimal"
+                                "（去 mstile/browserconfig/maskable 的现代最小集）")
     p_convert.add_argument("--no-maskable", action="store_true",
                            help="站点物料包不包含 maskable 安全区变体")
     p_convert.add_argument("--app-name", default="My App",

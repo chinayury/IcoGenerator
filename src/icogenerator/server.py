@@ -38,6 +38,7 @@ from .core import (
     MIN_PADDING,
     MIN_SAFE_ZONE,
     PRESET_SIZE_SETS,
+    SITE_ASSET_SETS,
     analyze_source,
     build_ico,
     build_ico_bundle,
@@ -814,6 +815,11 @@ class IcoGenHandler(BaseHTTPRequestHandler):
         existing_manifest = payload.get("existing_manifest")
         if existing_manifest is not None and not isinstance(existing_manifest, str):
             existing_manifest = None
+        asset_set = str(payload.get("asset_set") or "full")
+        if asset_set not in SITE_ASSET_SETS:
+            raise IcogenError(
+                f"asset_set 仅支持 {' / '.join(SITE_ASSET_SETS)}：{asset_set}"
+            )
 
         payload_bytes = build_site_assets_zip(
             image,
@@ -828,6 +834,7 @@ class IcoGenHandler(BaseHTTPRequestHandler):
             padding=padding,
             source_svg=source_svg,
             existing_manifest=existing_manifest,
+            asset_set=asset_set,
         )
 
         self._send_binary(payload_bytes, "application/zip", "site-assets.zip", download=True)
