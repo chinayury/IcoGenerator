@@ -23,6 +23,7 @@ import io
 import logging
 import os
 import sys
+import threading
 import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
@@ -34,6 +35,7 @@ if __package__ in (None, ""):
 from PIL import Image, ImageTk
 
 from . import __version__ as VERSION
+from .batch import BatchOptions, collect_image_files, convert_batch
 from .config import AppConfig, load_config, resolve_output_dir, save_config
 from .core import (
     ICO_SIZES,
@@ -269,6 +271,11 @@ class IcoGeneratorApp:
         self.choose_btn = ttk.Button(card, text="选择图片文件",
                                      command=self.pick_image, style="Ghost.TButton")
         self.choose_btn.pack(pady=(10, 0))
+
+        # 批量转换（借鉴 duma520 的批量模式：选文件夹 → 后台线程逐个转换 → 汇总）
+        self.batch_btn = ttk.Button(card, text="批量转换文件夹…",
+                                    command=self.start_batch, style="Ghost.TButton")
+        self.batch_btn.pack(pady=(8, 0))
 
         self.file_label = ttk.Label(card, text="", style="Body.TLabel")
         self.file_label.pack(anchor=tk.W, pady=(8, 0))
@@ -609,6 +616,87 @@ class IcoGeneratorApp:
         path = filedialog.askopenfilename(title="选择图片文件", filetypes=FILETYPES)
         if path:
             self.load_image(path)
+
+    def start_batch(self) -> None:
+        """批量转换文件夹（借鉴 duma520 的 ConversionThread 后台线程模式）。
+
+        后台线程跑 core/batch 引擎，UI 更新一律经 ``root.after`` 投递回主线程，
+        避免 Tk 的线程安全问题；单文件失败不影响其余文件，结束弹窗汇总。
+        """
+        folder = filedialog.askdirectory(title="选择要批量转换的文件夹")
+        if not folder:
+            return
+        files = collect_image_files(Path(folder), recursive=True)
+        if not files:
+            messagebox.showinfo(
+                "批量转换", "所选文件夹（含子目录）中没有受支持的图片文件。",
+                parent=self.root,
+            )
+            return
+        if not messagebox.askyesno(
+            "批量转换",
+            f"共找到 {len(files)} 个图片文件。\n\n"
+            "将按「② 定制输出规格」的当前设置逐个转换为 ICO，\n"
+            f"结果保存到输出目录：{self.output_dir}\n\n是否继续？",
+            parent=self.root,
+        ):
+            return
+
+        try:
+            safe_zone, background, opaque_pad, padding = self._quality_params()
+        except IcogenError as exc:
+            messagebox.showwarning("参数有误", str(exc), parent=self.root)
+            return
+
+        options = BatchOptions(
+            sizes=self._selected_sizes() or [(16, 16), (32, 32), (48, 48), (256, 256)],
+            fit_mode=self._current_fit_mode(),
+            safe_zone=safe_zone,
+            background=background,
+            opaque_pad=opaque_pad,
+            padding=padding,
+        )
+
+        self.batch_btn.configure(state=tk.DISABLED)
+        self._set_status(f"批量转换中… 0/{len(files)}")
+
+        def worker() -> None:
+            counter = {"done": 0}
+
+            def on_progress(event: str, payload: dict) -> None:
+                if event != "file":
+                    return
+                counter["done"] += 1
+                name = Path(str(payload.get("path"))).name
+                mark = "✓" if payload.get("ok") else "✗"
+                line = (f"批量转换中… {counter['done']}/{len(files)}　"
+                        f"{mark} {name}")
+                self.root.after(0, lambda: self._set_status(line))
+
+            result = convert_batch(self.store, files, options, progress=on_progress)
+            failed = [f for f in result.files if not f.ok]
+            summary = (f"批量转换完成：成功 {result.success}，失败 {result.failed}"
+                       f"（共 {result.total} 个）")
+            detail = "\n".join(
+                f"✗ {Path(f.path).name}: {f.error}" for f in failed[:8]
+            )
+            self.root.after(0, lambda: self._finish_batch(summary, detail))
+
+        threading.Thread(target=worker, name="icogen-batch", daemon=True).start()
+
+    def _finish_batch(self, summary: str, detail: str) -> None:
+        """批量结束后恢复按钮并汇总（主线程执行）。"""
+        self.batch_btn.configure(state=tk.NORMAL)
+        self._set_status(summary)
+        LOGGER.info(summary)
+        if detail:
+            messagebox.showwarning(
+                "批量转换（部分失败）", summary + "\n\n" + detail, parent=self.root,
+            )
+        else:
+            messagebox.showinfo(
+                "批量转换", f"{summary}\n输出目录：{self.output_dir}", parent=self.root,
+            )
 
     def load_image(self, path: str) -> None:
         """加载源图。所有失败都以业务异常呈现，不抛裸栈。"""

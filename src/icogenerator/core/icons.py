@@ -82,6 +82,15 @@ def _validate_sizes(sizes: Iterable[Tuple[int, int]]) -> List[Tuple[int, int]]:
 
         if width <= 0 or height <= 0:
             raise IcogenError(f"尺寸必须为正数：{width}x{height}")
+        if width != height:
+            # 实测（Pillow 13.0.0）：ICO 编码器会把非正方形请求静默降级为
+            # 正方形帧（16x32 -> 16x16）且不报错，自检随后必然失败。
+            # 与其给出误导性错误，不如在生成前明确拒绝并引导（duma520 等
+            # 同类工具同样只支持正方形尺寸）。
+            raise IcogenError(
+                f"ICO 帧必须为正方形：{width}x{height}",
+                hint="请改用正方形尺寸，如 16x16 或 32,48（等价简写）",
+            )
         if width > MAX_ICO_EDGE or height > MAX_ICO_EDGE:
             raise IcogenError(
                 f"ICO 不支持大于 {MAX_ICO_EDGE}x{MAX_ICO_EDGE} 的尺寸：{width}x{height}"
