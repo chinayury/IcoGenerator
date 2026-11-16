@@ -70,6 +70,12 @@
         <label>留白颜色
           <input type="text" id="background" value="#ffffff" maxlength="7">
         </label>
+        <label>ICO 帧格式
+          <select id="bitmapFormat">
+            <option value="bmp">bmp（最大兼容）</option>
+            <option value="png">png（体积更小）</option>
+          </select>
+        </label>
         <label class="check">
           <input type="checkbox" id="padOpaque">
           补边不透明
@@ -79,6 +85,13 @@
       <label class="fit">
         <input type="checkbox" id="includeMaskable" checked>
         站点物料包包含 maskable 安全区变体
+      </label>
+      <label class="fit">
+        物料包档位：
+        <select id="assetSet">
+          <option value="full">完整（含磁贴 / browserconfig）</option>
+          <option value="minimal">精简（现代最小物料集）</option>
+        </select>
       </label>
 
       <button class="btn primary block" id="btnGen" disabled>生成 ICO</button>

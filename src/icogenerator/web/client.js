@@ -201,6 +201,8 @@ async function generate() {
       padding: $('padding') ? (Number($('padding').value) || 0) : 0,
       background: $('background').value,
       opaque_pad: $('padOpaque').checked,
+      bitmap_format: $('bitmapFormat') ? $('bitmapFormat').value : 'bmp',
+      asset_set: $('assetSet') ? $('assetSet').value : 'full',
       name: 'My App',
       theme_color: '#ffffff',
     };
@@ -347,6 +349,7 @@ $('btnSaveBundle').addEventListener('click', async () => {
       fit_mode: $('fit').value,
       safe_zone: Number($('safeZone') ? $('safeZone').value : 0.8) || 0.8,
       padding: $('padding') ? (Number($('padding').value) || 0) : 0,
+      bitmap_format: $('bitmapFormat') ? $('bitmapFormat').value : 'bmp',
     };
     const resp = await fetch('/api/bundle', {
       method: 'POST',

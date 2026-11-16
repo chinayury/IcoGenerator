@@ -38,6 +38,7 @@ from . import __version__ as VERSION
 from .batch import BatchOptions, collect_image_files, convert_batch
 from .config import AppConfig, load_config, resolve_output_dir, save_config
 from .core import (
+    BITMAP_FORMATS,
     ICO_SIZES,
     MASKABLE_SAFE_ZONE,
     MAX_PADDING,
@@ -346,6 +347,11 @@ class IcoGeneratorApp:
         self.padding_var = tk.StringVar(value=f"{MIN_PADDING:.2f}")
         ttk.Spinbox(param_row, from_=MIN_PADDING, to=MAX_PADDING, increment=0.05,
                     textvariable=self.padding_var, width=6).pack(side=tk.LEFT)
+        ttk.Label(param_row, text="帧格式：", style="Body.TLabel").pack(
+            side=tk.LEFT, padx=(12, 0))
+        self.bitmap_format_var = tk.StringVar(value="bmp")
+        ttk.Combobox(param_row, textvariable=self.bitmap_format_var, state="readonly",
+                     values=list(BITMAP_FORMATS), width=6).pack(side=tk.LEFT)
 
         # 一站式站点物料包（调研要点 3：同类项目均只输出 ICO）
         self.site_assets_var = tk.BooleanVar(value=False)
@@ -544,6 +550,9 @@ class IcoGeneratorApp:
 
             self.site_assets_var.set(bool(ui.site_assets))
             self.padding_var.set(f"{float(ui.padding or 0.0):.2f}")
+            self.bitmap_format_var.set(
+                ui.bitmap_format if ui.bitmap_format in BITMAP_FORMATS else "bmp"
+            )
 
             LOGGER.info(
                 "已恢复界面偏好：preset=%s fit=%s sizes=%s",
@@ -569,6 +578,10 @@ class IcoGeneratorApp:
             selected = self._selected_sizes()
             ui.fit_mode = self._current_fit_mode()
             ui.padding = self._parse_padding_pref()
+            ui.bitmap_format = (
+                self.bitmap_format_var.get()
+                if self.bitmap_format_var.get() in BITMAP_FORMATS else "bmp"
+            )
             ui.sizes = [str(s[0]) for s in selected]
             ui.site_assets = bool(self.site_assets_var.get())
             ui.window_geometry = self.root.geometry()
@@ -655,6 +668,7 @@ class IcoGeneratorApp:
             background=background,
             opaque_pad=opaque_pad,
             padding=padding,
+            bitmap_format=self.bitmap_format_var.get(),
         )
 
         self.batch_btn.configure(state=tk.DISABLED)
@@ -768,13 +782,16 @@ class IcoGeneratorApp:
         try:
             fit_mode = self._current_fit_mode()
             safe_zone, background, opaque_pad, padding = self._quality_params()
+            bitmap_format = self.bitmap_format_var.get()
             merged = build_ico(
                 self.image, sizes, fit_mode=fit_mode, safe_zone=safe_zone,
                 background=background, opaque_pad=opaque_pad, padding=padding,
+                bitmap_format=bitmap_format,
             )
             bundle = build_ico_bundle(
                 self.image, sizes, fit_mode=fit_mode, safe_zone=safe_zone,
                 background=background, opaque_pad=opaque_pad, padding=padding,
+                bitmap_format=bitmap_format,
             )
 
             record = self.store.save_bytes(
