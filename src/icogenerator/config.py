@@ -149,6 +149,8 @@ class UiPreferences:
     sizes: list = field(default_factory=list)
     # 上次是否勾选「生成站点物料包」
     site_assets: bool = False
+    # 上次选择的站点物料包档位（full / minimal）
+    site_asset_set: str = "full"
     # 窗口几何，如 "960x680"
     window_geometry: str = ""
 
@@ -159,6 +161,8 @@ class UiPreferences:
             raise StorageConfigError(f"留白比例必须在 0-0.6 之间：{self.padding}")
         if self.bitmap_format not in ("bmp", "png"):
             raise StorageConfigError(f"未知的 ICO 帧格式：{self.bitmap_format}")
+        if self.site_asset_set not in ("full", "minimal"):
+            raise StorageConfigError(f"未知的站点物料包档位：{self.site_asset_set}")
         if len(self.sizes) > 32:
             raise StorageConfigError("勾选的尺寸过多，配置可能已损坏")
 

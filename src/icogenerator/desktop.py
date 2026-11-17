@@ -46,6 +46,7 @@ from .core import (
     MIN_PADDING,
     MIN_SAFE_ZONE,
     PRESET_SIZE_SETS,
+    SITE_ASSET_SETS,
     build_ico,
     build_ico_bundle,
     build_site_assets_zip,
@@ -360,6 +361,14 @@ class IcoGeneratorApp:
             variable=self.site_assets_var,
         ).pack(anchor=tk.W, pady=(12, 0))
 
+        # 物料包档位（借鉴 vite-pwa minimal2023Preset；单图导出与批量转换共用）
+        self.site_asset_set_var = tk.StringVar(value="full")
+        asset_row = ttk.Frame(card, style="TFrame")
+        asset_row.pack(anchor=tk.W, pady=(4, 0))
+        ttk.Label(asset_row, text="物料包档位：", style="Body.TLabel").pack(side=tk.LEFT)
+        ttk.Combobox(asset_row, textvariable=self.site_asset_set_var, state="readonly",
+                     values=["full", "minimal"], width=10).pack(side=tk.LEFT)
+
         self.generate_btn = ttk.Button(
             card, text="生成 ICO 文件", command=self.generate,
             style="Accent.TButton", state=tk.DISABLED,
@@ -553,6 +562,9 @@ class IcoGeneratorApp:
             self.bitmap_format_var.set(
                 ui.bitmap_format if ui.bitmap_format in BITMAP_FORMATS else "bmp"
             )
+            self.site_asset_set_var.set(
+                ui.site_asset_set if ui.site_asset_set in SITE_ASSET_SETS else "full"
+            )
 
             LOGGER.info(
                 "已恢复界面偏好：preset=%s fit=%s sizes=%s",
@@ -584,6 +596,10 @@ class IcoGeneratorApp:
             )
             ui.sizes = [str(s[0]) for s in selected]
             ui.site_assets = bool(self.site_assets_var.get())
+            ui.site_asset_set = (
+                self.site_asset_set_var.get()
+                if self.site_asset_set_var.get() in SITE_ASSET_SETS else "full"
+            )
             ui.window_geometry = self.root.geometry()
             # 反查 preset key：仅当当前勾选与某预设完全一致时才记录，
             # 否则记空——避免下次启动用错误的预设覆盖用户的手动选择。
@@ -669,6 +685,8 @@ class IcoGeneratorApp:
             opaque_pad=opaque_pad,
             padding=padding,
             bitmap_format=self.bitmap_format_var.get(),
+            site_assets=bool(self.site_assets_var.get()),
+            asset_set=self.site_asset_set_var.get(),
         )
 
         self.batch_btn.configure(state=tk.DISABLED)
@@ -961,6 +979,7 @@ class IcoGeneratorApp:
                 background=background,
                 opaque_pad=opaque_pad,
                 padding=padding,
+                asset_set=self.site_asset_set_var.get(),
             )
             Path(path).write_bytes(data)
 
