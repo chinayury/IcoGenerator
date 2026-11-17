@@ -376,3 +376,66 @@ class LocalStore:
             "total_bytes": total_bytes,
             "by_status": by_status,
         }
+
+    def prune(self, *, keep_last: int = 100, dry_run: bool = False) -> Dict[str, Any]:
+        """清理历史产物：保留最近 ``keep_last`` 条，删除更旧的文件与元数据。
+
+        解决本地 store 无界增长（借鉴 duma520 的「清除历史记录」能力）。
+
+        安全约束：
+        - 只删除 index 中登记且位于本仓库目录内的文件（路径一律经
+          ``_safe_path`` 校验，越界登记直接跳过文件、仅清元数据）；
+        - ``.icogen`` 元数据目录永不触碰；
+        - ``dry_run=True`` 只统计不删除，供管理台与 CLI 预演。
+
+        Returns:
+            含 kept / removed_files / removed_entries / freed_bytes / removed 明细。
+        """
+        if keep_last < 1:
+            raise StorageError("保留数量必须 >= 1")
+
+        records = self._read_index()
+        total = len(records)
+        if total <= keep_last:
+            return {
+                "kept": total, "removed_files": 0, "removed_entries": 0,
+                "freed_bytes": 0, "dry_run": dry_run, "removed": [],
+            }
+
+        to_remove = records[:total - keep_last]  # 最旧的先清
+        kept = records[total - keep_last:]
+
+        removed: List[Dict[str, Any]] = []
+        freed = 0
+        removed_files = 0
+        if not dry_run:
+            for record in to_remove:
+                base = self.bundles_dir if record.fit_mode == "bundle" else self.icons_dir
+                try:
+                    path = self._safe_path(base, record.filename)
+                except StorageError:
+                    # 登记异常（越界路径）：保留文件，仅清元数据
+                    removed.append({"filename": record.filename, "size": 0})
+                    continue
+                try:
+                    size = path.stat().st_size
+                    path.unlink()
+                    removed_files += 1
+                    freed += size
+                    removed.append({"filename": record.filename, "size": size})
+                except FileNotFoundError:
+                    removed.append({"filename": record.filename, "size": 0})
+                except OSError as exc:
+                    LOGGER.warning("清理产物失败 %s：%s", record.filename, exc)
+
+        if not dry_run:
+            self._write_index(kept)
+
+        return {
+            "kept": len(kept),
+            "removed_files": removed_files,
+            "removed_entries": len(to_remove),
+            "freed_bytes": freed,
+            "dry_run": dry_run,
+            "removed": removed,
+        }

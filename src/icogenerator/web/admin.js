@@ -320,6 +320,25 @@ $('btnUploadPending').addEventListener('click', async () => {
 
 $('btnRefresh').addEventListener('click', refreshList);
 
+/* 清理历史产物：保留最近 N 条（借鉴 duma520 清除历史记录；鉴权 API）。
+   两步确认：先弹确认框，删除动作本身不可逆。 */
+$('btnPrune').addEventListener('click', async () => {
+  const keep = Math.max(1, Math.min(5000, parseInt($('pruneKeep').value, 10) || 100));
+  if (!confirm('将删除「保留最近 ' + keep + ' 条」之外的本地产物文件与记录，\n该操作不可恢复。是否继续？')) {
+    return;
+  }
+  setMsg('schedMsg', '正在清理…');
+  try {
+    const data = await api('POST', '/api/artifacts/prune', {keep: keep, dry_run: false});
+    await refreshList();
+    const freed = fmtBytes(data.freed_bytes || 0);
+    setMsg('schedMsg', '已清理 ' + (data.removed_files || 0) + ' 个文件，释放 ' + freed +
+      '；保留 ' + (data.kept || 0) + ' 条', 'ok');
+  } catch (e) {
+    setMsg('schedMsg', '清理失败：' + e.message, 'err');
+  }
+});
+
 // 页面加载时若已有令牌则自动连接
 if (token) {
   $('token').value = token;

@@ -520,6 +520,12 @@ class IcoGenHandler(BaseHTTPRequestHandler):
                 return
 
             # ---- 管理接口（需令牌）----
+            if route == "/api/artifacts/prune":
+                if not self._check_auth():
+                    return
+                self._handle_prune()
+                return
+
             if route == "/api/config":
                 if not self._check_auth():
                     return
@@ -737,6 +743,14 @@ class IcoGenHandler(BaseHTTPRequestHandler):
                 "max_retries": scheduler.max_retries,
             },
         })
+
+    def _handle_prune(self) -> None:
+        """清理历史产物（保留最近 N 条；借鉴 duma520 清除历史记录能力）。"""
+        payload = self._read_json()
+        keep = _safe_int(payload.get("keep"), 100, low=1, high=5000)
+        dry_run = bool(payload.get("dry_run"))
+        result = self.store.prune(keep_last=keep, dry_run=dry_run)
+        self._send_json({"ok": True, **result})
 
     def _handle_manual_upload(self) -> None:
         """手动上传：指定 artifact_id 或上传全部待传。"""

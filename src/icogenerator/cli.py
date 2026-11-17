@@ -436,6 +436,35 @@ def cmd_doctor(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_clean(args: argparse.Namespace) -> int:
+    """清理历史产物：保留最近 N 条（借鉴 duma520 清除历史记录能力）。
+
+    真实删除需要显式 ``--yes``；默认 dry-run 只报告将删除的内容。
+    """
+    config = load_config(args.config)
+    output_root = resolve_output_dir(config, args.output_dir)
+    store = LocalStore(output_root)
+    keep = max(1, min(5000, args.keep))
+    result = store.prune(keep_last=keep, dry_run=args.dry_run or not args.yes)
+
+    if result["dry_run"]:
+        _print(f"预演：将删除 {result['removed_entries']} 条记录 / "
+               f"{result['removed_files']} 个文件，"
+               f"释放 {result['freed_bytes']:,} 字节（保留最近 {keep} 条）")
+        for item in result["removed"][:10]:
+            _print(f"  - {item['filename']} ({item['size']:,} 字节)")
+        if len(result["removed"]) > 10:
+            _print(f"  …等共 {len(result['removed'])} 条")
+        if not args.dry_run:
+            _print("确认无误后加 --yes 执行删除。")
+        return 0
+
+    _print(f"✓ 已清理 {result['removed_files']} 个文件 / "
+           f"{result['removed_entries']} 条记录，"
+           f"释放 {result['freed_bytes']:,} 字节；保留最近 {keep} 条")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="icogen",
@@ -499,6 +528,17 @@ def build_parser() -> argparse.ArgumentParser:
     p_doctor.add_argument("-s", "--sizes", default="16,32,48,256",
                           help="一并校验的尺寸列表")
     p_doctor.set_defaults(func=cmd_doctor)
+
+    p_clean = sub.add_parser("clean", help="清理历史产物（保留最近 N 条）")
+    p_clean.add_argument("-o", "--output-dir", default=None,
+                         help="要清理的输出目录（默认为配置中的 output_dir）")
+    p_clean.add_argument("--keep", type=int, default=100,
+                         help="保留最近的产物数量（1-5000）")
+    p_clean.add_argument("--dry-run", action="store_true",
+                         help="预演：只报告将删除的内容，不删除")
+    p_clean.add_argument("--yes", action="store_true",
+                         help="确认执行删除（不带时等同 dry-run）")
+    p_clean.set_defaults(func=cmd_clean)
 
     return parser
 

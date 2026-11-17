@@ -132,6 +132,9 @@
       <h2><span class="stepno">04</span><svg class="hicon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/></svg>生成产物管理</h2>
       <div class="row">
         <button class="btn" id="btnRefresh">刷新</button>
+        <button class="btn" id="btnPrune">清理历史产物</button>
+        <input type="number" id="pruneKeep" min="1" max="5000" value="100" style="width:5em">
+        <span class="hint">保留最近 N 条</span>
         <span class="hint" id="statsLine"></span>
       </div>
       <div class="table-wrap">
