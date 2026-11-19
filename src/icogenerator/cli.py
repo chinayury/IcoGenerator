@@ -350,13 +350,15 @@ def cmd_desktop(_args: argparse.Namespace) -> int:
 
 
 def cmd_info(args: argparse.Namespace) -> int:
-    """打印当前配置（凭据脱敏）。"""
+    """打印当前配置（凭据脱敏）与产物统计。"""
     config = load_config(args.config)
     output_root = resolve_output_dir(config)
+    stats = LocalStore(output_root).stats()
 
     _print(f"IcoGenerator v{__version__}")
     _print(f"配置文件      : {args.config or '(默认路径)'}")
     _print(f"输出目录      : {output_root}")
+    _print(f"产物统计      : {stats['count']} 个文件，占用 {stats['total_bytes']:,} 字节")
     _print(f"服务地址      : http://{config.host}:{config.port}")
     _print(f"对象存储      : {'已启用' if config.storage.enabled else '未启用'}")
     _print(f"定时上传      : {'已启用' if config.scheduler.enabled else '未启用'}")
@@ -364,6 +366,7 @@ def cmd_info(args: argparse.Namespace) -> int:
     for key, (label, sizes) in PRESET_SIZE_SETS.items():
         _print(f"  {key:<10} {label} -> {','.join(str(s[0]) for s in sizes)}")
     _print(f"  全尺寸      {','.join(str(s[0]) for s in ICO_SIZES)}")
+    _print("\n清理历史产物：icogen clean --keep N（先预演，加 --yes 执行）")
     return 0
 
 

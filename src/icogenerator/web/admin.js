@@ -321,10 +321,22 @@ $('btnUploadPending').addEventListener('click', async () => {
 $('btnRefresh').addEventListener('click', refreshList);
 
 /* 清理历史产物：保留最近 N 条（借鉴 duma520 清除历史记录；鉴权 API）。
-   两步确认：先弹确认框，删除动作本身不可逆。 */
+   三段式：dry-run 预览将删除的内容 → 用户确认 → 真实执行。 */
 $('btnPrune').addEventListener('click', async () => {
   const keep = Math.max(1, Math.min(5000, parseInt($('pruneKeep').value, 10) || 100));
-  if (!confirm('将删除「保留最近 ' + keep + ' 条」之外的本地产物文件与记录，\n该操作不可恢复。是否继续？')) {
+  setMsg('schedMsg', '正在统计…');
+  let preview;
+  try {
+    preview = await api('POST', '/api/artifacts/prune', {keep: keep, dry_run: true});
+  } catch (e) {
+    setMsg('schedMsg', '统计失败：' + e.message, 'err');
+    return;
+  }
+  const msg = '将保留最近 ' + (preview.kept || 0) + ' 条，删除 ' +
+    (preview.removed_entries || 0) + ' 条记录 / ' + (preview.removed_files || 0) +
+    ' 个文件，释放 ' + fmtBytes(preview.freed_bytes || 0) + '。\n该操作不可恢复。是否继续？';
+  if (!confirm(msg)) {
+    setMsg('schedMsg', '已取消清理');
     return;
   }
   setMsg('schedMsg', '正在清理…');
