@@ -21,6 +21,7 @@ jobs:
   dist:
     name: Python package
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
         with:
@@ -41,6 +42,7 @@ jobs:
   windows:
     name: Windows desktop and CLI
     runs-on: windows-latest
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
         with:
@@ -71,6 +73,7 @@ jobs:
   linux:
     name: Linux CLI and server
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
         with:
@@ -98,6 +101,7 @@ jobs:
   docker:
     name: Docker image (GHCR)
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
         with:
@@ -134,6 +138,7 @@ jobs:
     name: Publish GitHub Release
     needs: [dist, windows, linux, docker]
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
         with:
@@ -167,6 +172,7 @@ jobs:
     name: Remove historical packages
     needs: [release]
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       contents: write
       packages: write

@@ -6,6 +6,24 @@
 
 ---
 
+## [v0.2.5] — 2026-11-20 CI 稳定性加固
+
+连续多个版本出现 macOS CI runner 排队超时被系统取消（ubuntu / windows / docker /
+wheel 各 job 均稳定通过），针对该结构性问题加固 CI 配置。
+
+### 改进
+
+- **CI 并发取消策略**：`concurrency: ci-<ref>` + `cancel-in-progress`——
+  同一分支的旧 CI run 在新 run 启动时自动取消，从结构上避免重复排队
+- **全部 CI/发布 job 增加 `timeout-minutes`**：单个 job 挂起时按时限失败
+  （可 rerun），不再无限占用 runner 或长时间排队后整批被取消
+
+### 兼容性
+
+- 仅 CI/发布基础设施变更，不影响任何运行时行为与产物
+
+---
+
 ## [v0.2.4] — 2026-11-19 清理预览与产物统计
 
 维护循环复检（Issues 0 条、深筛项目无变化）。两项运营可见性小改进。

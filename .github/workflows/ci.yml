@@ -6,6 +6,12 @@ on:
   pull_request:
   workflow_dispatch:
 
+# 同一分支的旧 CI run 在新 run 启动时自动取消：
+# macOS runner 排队慢且曾出现排队超时被系统取消，此设置从结构上避免重复排队。
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
@@ -13,6 +19,7 @@ jobs:
   test:
     name: Test (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -66,6 +73,7 @@ jobs:
   build-dist:
     name: Build wheel and sdist
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -84,6 +92,7 @@ jobs:
   docker-build:
     name: Build Docker image
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - name: Build image
