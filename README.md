@@ -15,9 +15,12 @@
 
 - **一次生成多尺寸 ICO**，16/24/32/48/64/128/256 可任意组合
 - **非正方形图片不变形**：提供居中裁切（cover）、留边（contain）、PWA 安全区（maskable）、拉伸（stretch）四种策略；安全区比例与留边颜色均可调
-- **分级质量提示**：源图过小、无透明通道、逼近解码上限、体积超预算，按级别给出可操作说明
-- **一站式站点物料包**：一次产出 ICO、apple-touch-icon、android-chrome、maskable 变体、mstile、manifest、browserconfig、HTML 片段与自说明清单
-- **本地优先**：所有结果先落本地目录，不配置对象存储也能完整使用
+- **内容留白可调**：主体按比例缩放居中（如 90%），四周留出呼吸空间
+- **PNG 帧可选**：`--bitmap-format png` 同等画质压缩 ICO 体积（旧系统兼容时可保持默认 BMP 帧）
+- **分级质量提示**：源图过小、无透明通道、逼近解码上限、体积超预算，按级别给出可操作建议
+- **一站式站点物料包**：完整档（ICO、apple-touch-icon、android-chrome、maskable 变体、mstile、manifest、browserconfig、HTML 片段与自说明清单）与精简档（现代最小物料集）两档可选；源图为 SVG 时附带矢量 favicon；支持合并进既有 manifest.json
+- **桌面版批量转换**：选择文件夹（含子目录）后台逐个转换，进度实时显示，单文件失败不影响其余
+- **本地优先 + 可清理**：所有结果先落本地目录并登记元数据，`icogen clean` 保留最近 N 条防止无界增长
 - **对象存储可选**：支持 S3 兼容存储（阿里云 OSS / 腾讯云 COS / MinIO / AWS S3），由管理员手动或定时上传，前台用户无感知
 - **依赖极少**：运行时只需 Pillow 一个第三方库；S3 签名用标准库实现。SVG 输入为可选增强（装 cairosvg 才启用，未装则明确提示）
 
@@ -32,17 +35,21 @@ python -m icogenerator desktop       # 启动桌面版（等价于 python -m ico
 
 ```bash
 pip install -e .
-icogen desktop     # 桌面版
+icogen desktop     # 桌面版（单图 + 文件夹批量转换）
 icogen serve       # 网页版 + 管理控制台
-icogen info        # 查看当前配置
+icogen info        # 查看当前配置与产物统计
 icogen doctor      # 运行前环境自检
+icogen clean       # 清理历史产物（保留最近 N 条）
 ```
 
-命令行预演（不落盘，只报告体积与警告）：
+命令行转换示例（完整参数见 [功能使用说明](docs/03-功能使用说明.md)）：
 
 ```bash
-icogen convert logo.png --dry-run -s 16,32,48,64,128,256
-icogen convert logo.png --fit maskable --safe-zone 0.6 --background "#ffffff"
+icogen convert logo.png --dry-run -s 16,32,48,64,128,256   # 预演不落盘
+icogen convert logo.png --bitmap-format png                # PNG 帧压缩体积
+icogen convert ./images/ --recursive --png-sizes 16,32,256 # 批量 + 独立 PNG
+icogen convert logo.png --site-assets --site-assets-set minimal  # 精简物料包
+icogen convert logo.png -o D:\apps\myapp\app.ico           # 单文件指定输出路径
 ```
 
 详细说明见 [部署教程](docs/02-环境部署教程.md)。
@@ -60,11 +67,11 @@ icogen convert logo.png --fit maskable --safe-zone 0.6 --background "#ffffff"
 
 ## 版本
 
-版本号统一维护在以下三个位置，升级版本时需同时修改：
+版本号统一维护在以下**两处**，升级版本时需同时修改
+（其余位置一律导入或从 `/api/health` 动态读取，不得硬编码）：
 
 - `pyproject.toml` → `version`
 - `src/icogenerator/__init__.py` → `__version__`
-- `src/icogenerator/server.py` → `VERSION`
 
 ## CI 与发布产物
 
