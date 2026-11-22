@@ -210,12 +210,14 @@ def cmd_convert(args: argparse.Namespace) -> int:
 
     failures = 0
     total_bytes = 0
+    frame = max(0, int(getattr(args, "frame", 0) or 0))
 
     if args.dry_run:
         _print("预演模式：只生成到内存并报告，不写盘。")
         _print(f"  适配策略 {fit_mode}　安全区 {safe_zone:.2f}　留白比例 {padding:.2f}　"
               f"颜色 #{background[0]:02x}{background[1]:02x}{background[2]:02x}"
-              f"（不透明：{'是' if args.pad_opaque else '否'}）")
+              f"（不透明：{'是' if args.pad_opaque else '否'}）"
+              + (f"　动图取第 {frame} 帧" if frame else ""))
         if png_sizes:
             _print("  将额外输出独立 PNG："
                    + ", ".join(f"{w}x{h}" for w, h in png_sizes))
@@ -231,7 +233,7 @@ def cmd_convert(args: argparse.Namespace) -> int:
 
     for path in files:
         try:
-            image = open_image_file(str(path))
+            image = open_image_file(str(path), frame=frame)
             data = build_ico(
                 image, sizes, fit_mode=fit_mode, safe_zone=safe_zone,
                 background=background, opaque_pad=args.pad_opaque,
@@ -508,6 +510,8 @@ def build_parser() -> argparse.ArgumentParser:
     p_convert.add_argument("--bitmap-format", choices=BITMAP_FORMATS, default="bmp",
                            help="ICO 帧编码格式：bmp（默认/最大兼容）或 png（体积更小，"
                                 "Windows XP 等旧系统不识别）")
+    p_convert.add_argument("--frame", type=int, default=0,
+                           help="动图（GIF/WebP 等）取第几帧，从 0 开始；超出范围自动取最后一帧")
     p_convert.add_argument("--site-assets", action="store_true",
                            help="同时输出完整站点物料包 ZIP（favicon/manifest/磁贴等）")
     p_convert.add_argument("--site-assets-set", choices=SITE_ASSET_SETS, default="full",

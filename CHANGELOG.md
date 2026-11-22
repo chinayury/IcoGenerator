@@ -17,6 +17,27 @@
 
 ---
 
+## [v0.2.6] — 2026-11-22 动图选帧能力透出
+
+维护循环复检（Issues 0 条；duma520 当日推送仅为文档脱敏整理，无新功能）。
+核心引擎的动图选帧能力自 v0.1.0 即存在但未透出到任何入口，本轮补齐——
+同类工具（如 duma520）普遍只取第一帧并把它列为已知限制，本能力做成优势项。
+
+### 新增
+
+- **动图选帧 `--frame N`**（GIF / WebP 等动图，从 0 开始；超出实际帧数自动取最后一帧）：
+  - CLI：`icogen convert animation.gif --frame 2`
+  - 批量引擎：`BatchOptions.frame`
+  - API：`POST /api/generate`、`/api/bundle`、`/api/site-assets` 新增 `frame` 字段
+    （负数与非法值归一为 0 / 明确报错）
+
+### 兼容性
+
+- `--frame` / `frame` 默认 0（首帧），与历史行为完全一致
+- 静态图片忽略该参数
+
+---
+
 ## [v0.2.5] — 2026-11-20 CI 稳定性加固
 
 连续多个版本出现 macOS CI runner 排队超时被系统取消（ubuntu / windows / docker /

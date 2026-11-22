@@ -575,6 +575,11 @@ class IcoGenHandler(BaseHTTPRequestHandler):
 
     # ---------------- 处理函数 ----------------
 
+    def _parse_frame(self, payload: Dict[str, Any]) -> int:
+        """解析动图帧序号（非负整数；超出动图实际帧数时由核心自动取最后一帧）。"""
+        frame = _safe_int(payload.get("frame"), 0, low=0, high=100000)
+        return frame
+
     def _handle_generate(self) -> None:
         """生成 ICO。
 
@@ -598,7 +603,8 @@ class IcoGenHandler(BaseHTTPRequestHandler):
         except Exception as exc:  # noqa: BLE001
             raise IcogenError(f"image_base64 解码失败：{exc}") from exc
 
-        image = decode_image(raw, filename=str(payload.get("filename") or "upload"))
+        image = decode_image(raw, filename=str(payload.get("filename") or "upload"),
+                             frame=self._parse_frame(payload))
         sizes = self._parse_sizes({}, payload)
         fit_mode = str(payload.get("fit_mode") or "cover")
         if fit_mode not in ("cover", "contain", "maskable", "stretch"):
@@ -815,7 +821,8 @@ class IcoGenHandler(BaseHTTPRequestHandler):
         except Exception as exc:  # noqa: BLE001
             raise IcogenError(f"image_base64 解码失败：{exc}") from exc
 
-        image = decode_image(raw, filename=str(payload.get("filename") or "upload"))
+        image = decode_image(raw, filename=str(payload.get("filename") or "upload"),
+                             frame=self._parse_frame(payload))
         sizes = self._parse_sizes({}, payload)
         fit_mode = str(payload.get("fit_mode") or "cover")
         if fit_mode not in ("cover", "contain", "maskable", "stretch"):
@@ -875,7 +882,8 @@ class IcoGenHandler(BaseHTTPRequestHandler):
         except Exception as exc:  # noqa: BLE001
             raise IcogenError(f"image_base64 解码失败：{exc}") from exc
 
-        image = decode_image(raw, filename=str(payload.get("filename") or "upload"))
+        image = decode_image(raw, filename=str(payload.get("filename") or "upload"),
+                             frame=self._parse_frame(payload))
         sizes = self._parse_sizes({}, payload)
         fit_mode = str(payload.get("fit_mode") or "cover")
         if fit_mode not in ("cover", "contain", "maskable", "stretch"):

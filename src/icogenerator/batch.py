@@ -53,6 +53,7 @@ class BatchOptions:
     opaque_pad: bool = False
     padding: float = 0.0
     bitmap_format: str = "bmp"
+    frame: int = 0
     png_sizes: Optional[List[Tuple[int, int]]] = None
     site_assets: bool = False
     asset_set: str = "full"
@@ -114,6 +115,8 @@ def convert_batch(
         raise IcogenError(f"未知的 ICO 帧格式：{options.bitmap_format}")
     if options.asset_set not in SITE_ASSET_SETS:
         raise IcogenError(f"未知的站点物料包档位：{options.asset_set}")
+    if options.frame < 0:
+        raise IcogenError(f"动图帧序号必须 >= 0：{options.frame}")
     validate_sizes(options.sizes)
     for width, height in options.png_sizes or ():
         if not (1 <= width <= 1024 and 1 <= height <= 1024):
@@ -127,7 +130,7 @@ def convert_batch(
         try:
             from .core.imaging import open_image_file
 
-            image = open_image_file(str(path))
+            image = open_image_file(str(path), frame=options.frame)
             data = build_ico(
                 image, options.sizes, fit_mode=options.fit_mode,
                 safe_zone=options.safe_zone, background=options.background,
