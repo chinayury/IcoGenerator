@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import io
 import math
-from typing import Sequence, Tuple
+from typing import Optional, Sequence, Tuple
 
 from PIL import Image, ImageFile, ImageOps, UnidentifiedImageError
 
@@ -48,6 +48,37 @@ MAX_TOTAL_PIXELS = 178_956_970
 
 # GIF 动图最多取帧数，避免超大动图解码耗时过长。
 MAX_ANIMATION_FRAMES = 8
+
+# 常见文件头签名（magic bytes）表。识别失败时用它给出精确诊断：
+# 扩展名声称是受支持图片、但内容签名却是别的格式（如 ZIP / PDF），
+# 说明文件被改名或损坏——与「格式本身不支持」是两类问题，应分开提示
+# （借鉴 elephicon 的 PNG signature 探测，docs/06 附录十六）。
+_MAGIC_SIGNATURES: Tuple[Tuple[bytes, str], ...] = (
+    (b"\x89PNG\r\n\x1a\n", "PNG"),
+    (b"\xff\xd8\xff", "JPEG"),
+    (b"GIF87a", "GIF"),
+    (b"GIF89a", "GIF"),
+    (b"BM", "BMP"),
+    (b"RIFF", "RIFF（WebP 等）"),
+    (b"II*\x00", "TIFF（小端）"),
+    (b"MM\x00*", "TIFF（大端）"),
+    (b"\x00\x00\x01\x00", "ICO"),
+    (b"PK\x03\x04", "ZIP"),
+    (b"%PDF", "PDF"),
+    (b"{\\rtf", "RTF"),
+    (b"\x1f\x8b", "GZIP"),
+    (b"MZ", "Windows 可执行文件"),
+)
+
+
+def sniff_signature(data: bytes) -> Optional[str]:
+    """按文件头签名识别内容格式；无法识别返回 None（借鉴 elephicon PNG signature）。"""
+    if not data:
+        return None
+    for magic, name in _MAGIC_SIGNATURES:
+        if data.startswith(magic):
+            return name
+    return None
 
 # Pillow 对截断文件默认报错；这里显式放开，容忍轻微损坏但仍由 decode_image 兜底校验。
 ImageFile.LOAD_TRUNCATED_IMAGES = True
@@ -235,6 +266,21 @@ def decode_image(
             hint="疑似解压炸弹，已拒绝处理",
         ) from exc
     except UnidentifiedImageError as exc:
+        # 精确诊断（借鉴 elephicon 的 signature 探测，docs/06 附录十六）：
+        # Pillow 识别失败时探测文件头——内容签名与扩展名声称的图片格式不符
+        # 说明文件被改名或损坏，与「格式本身不受支持」分开提示。
+        sniffed = sniff_signature(data[:16])
+        if sniffed and sniffed not in ("ICO", "RIFF（WebP 等）"):
+            raise UnsupportedImageError(
+                f"无法识别文件格式：{filename}（内容实际为 {sniffed}，"
+                f"扩展名与内容不符）",
+                hint="文件可能被改名或损坏，请确认源文件本身是图片",
+            ) from exc
+        if sniffed is None:
+            raise UnsupportedImageError(
+                f"无法识别文件格式：{filename}（文件头无法对应任何已知格式）",
+                hint="文件可能已损坏，请尝试重新导出图片",
+            ) from exc
         raise UnsupportedImageError(
             f"无法识别文件格式：{filename}",
             hint="支持 JPG / PNG / GIF / BMP / WebP / TIFF / ICO / SVG"

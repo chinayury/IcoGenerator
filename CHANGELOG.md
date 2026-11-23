@@ -17,6 +17,29 @@
 
 ---
 
+## [v0.2.7] — 2026-11-23 文件格式精确诊断
+
+维护循环复检（Issues 0 条；elephicon 当日提交「detect spoofed file extensions via
+PNG signature」），借鉴其文件头探测思路，把我们的格式识别失败诊断从笼统提示
+升级为精确诊断。
+
+### 改进
+
+- **magic bytes 探测诊断**（借鉴
+  [elephicon](https://github.com/sprout2000/elephicon) 的 signature 探测）：
+  解码识别失败时探测文件头（PNG/JPEG/GIF/BMP/RIFF/TIFF/ICO/ZIP/PDF/GZIP/MZ 等），
+  分三类给出可操作提示：
+  - 内容签名与扩展名声称的图片格式不符 → 「扩展名与内容不符」（文件被改名或损坏）；
+  - 文件头无法对应任何已知格式 → 「文件可能已损坏」；
+  - 否则维持原有「不支持该格式」提示
+- `sniff_signature()` 作为公开能力导出（core/__init__），供界面层复用
+
+### 兼容性
+
+- 错误类型与成功路径完全不变，仅识别失败时的文案更精确；默认行为零变化
+
+---
+
 ## [v0.2.6] — 2026-11-22 动图选帧能力透出
 
 维护循环复检（Issues 0 条；duma520 当日推送仅为文档脱敏整理，无新功能）。

@@ -26,6 +26,7 @@ from .imaging import (
     normalize_to_square,
     rasterize_svg,
     resize_for_ico,
+    sniff_signature,
 )
 from .icons import (
     BITMAP_FORMATS,
@@ -88,6 +89,7 @@ __all__ = [
     "normalize_to_square",
     "rasterize_svg",
     "resize_for_ico",
+    "sniff_signature",
     "PRESET_SIZE_SETS",
     "ICO_SIZES",
     "BITMAP_FORMATS",
