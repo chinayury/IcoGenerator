@@ -642,16 +642,18 @@ class IcoGeneratorApp:
         self._hint_level = worst_level(hints)
 
     def pick_image(self) -> None:
-        path = filedialog.askopenfilename(title="选择图片文件", filetypes=FILETYPES)
-        if path:
-            self.load_image(path)
+        paths = filedialog.askopenfilenames(title="选择图片文件（可多选）",
+                                            filetypes=FILETYPES)
+        if not paths:
+            return
+        if len(paths) == 1:
+            self.load_image(paths[0])
+            return
+        # 多选：进入批量转换（借鉴 duma520 的多选批量能力）
+        self._confirm_and_run_batch([Path(p) for p in paths])
 
     def start_batch(self) -> None:
-        """批量转换文件夹（借鉴 duma520 的 ConversionThread 后台线程模式）。
-
-        后台线程跑 core/batch 引擎，UI 更新一律经 ``root.after`` 投递回主线程，
-        避免 Tk 的线程安全问题；单文件失败不影响其余文件，结束弹窗汇总。
-        """
+        """批量转换文件夹（借鉴 duma520 的 ConversionThread 后台线程模式）。"""
         folder = filedialog.askdirectory(title="选择要批量转换的文件夹")
         if not folder:
             return
@@ -662,15 +664,28 @@ class IcoGeneratorApp:
                 parent=self.root,
             )
             return
+        self._confirm_and_run_batch(files)
+
+    def _confirm_and_run_batch(self, files: list[Path]) -> None:
+        """确认批量范围后执行（文件夹 / 多选对话框入口）。"""
+        if not files:
+            return
         if not messagebox.askyesno(
             "批量转换",
-            f"共找到 {len(files)} 个图片文件。\n\n"
+            f"共 {len(files)} 个图片文件。\n\n"
             "将按「② 定制输出规格」的当前设置逐个转换为 ICO，\n"
             f"结果保存到输出目录：{self.output_dir}\n\n是否继续？",
             parent=self.root,
         ):
             return
+        self._run_batch(files)
 
+    def _run_batch(self, files: list[Path]) -> None:
+        """后台线程跑 core/batch 引擎执行批量转换。
+
+        UI 更新一律经 ``root.after`` 投递回主线程，避免 Tk 的线程安全问题；
+        单文件失败不影响其余文件，结束弹窗汇总。
+        """
         try:
             safe_zone, background, opaque_pad, padding = self._quality_params()
         except IcogenError as exc:
@@ -1058,6 +1073,9 @@ class IcoGeneratorApp:
         旧版先剥花括号再 ``shlex.split(path)[0]``，会把
         ``C:\\Users\\me\\My Pictures\\a.png`` 截成 ``C:UsersmeMy``（文件不存在）；
         多文件拖入时也只处理第一个且路径同样可能被截断。
+
+        多文件拖入直接进入批量转换（借鉴 duma520 的多文件批量能力）：
+        拖拽是明确的批量意图，不再要求二次确认。
         """
         try:
             paths = list(self.root.tk.splitlist(event.data))
@@ -1070,8 +1088,10 @@ class IcoGeneratorApp:
             return event.action
 
         if len(paths) > 1:
-            self._set_status(f"检测到 {len(paths)} 个文件，仅处理第一个")
-            LOGGER.info("拖入多个文件，取第一个：%s", paths[0])
+            self._set_status(f"检测到 {len(paths)} 个文件，进入批量转换")
+            LOGGER.info("拖入多个文件，批量转换：%d 个", len(paths))
+            self._run_batch([Path(p) for p in paths])
+            return event.action
 
         self.load_image(paths[0])
         return event.action
