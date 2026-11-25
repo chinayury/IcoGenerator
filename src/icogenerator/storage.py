@@ -439,3 +439,31 @@ class LocalStore:
             "dry_run": dry_run,
             "removed": removed,
         }
+
+    def delete_artifact(self, artifact_id: str) -> ArtifactRecord:
+        """删除单个产物（文件 + 元数据条目；借鉴 duma520 历史删除能力）。
+
+        安全约束与 prune 相同：只删除仓库登记且目录内的文件
+        （路径经 ``_safe_path`` 校验），文件缺失时仍会清理元数据。
+
+        Raises:
+            StorageError: 产物不存在。
+        """
+        records = self._read_index()
+        target = next((r for r in records if r.artifact_id == artifact_id), None)
+        if target is None:
+            raise StorageError(f"产物不存在：{artifact_id}")
+
+        base = self.bundles_dir if target.fit_mode == "bundle" else self.icons_dir
+        try:
+            path = self._safe_path(base, target.filename)
+            if path.is_file():
+                path.unlink()
+        except (StorageError, OSError) as exc:
+            # 文件删除失败不阻断元数据清理（登记已失效，保留文件无意义）
+            LOGGER.warning("删除产物文件失败 %s：%s", target.filename, exc)
+
+        kept = [r for r in records if r.artifact_id != artifact_id]
+        self._write_index(kept)
+        LOGGER.info("已删除产物 %s", target.filename)
+        return target

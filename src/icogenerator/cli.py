@@ -470,6 +470,87 @@ def cmd_clean(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_list(args: argparse.Namespace) -> int:
+    """列出本地产物（id / 文件 / 大小 / 尺寸 / 上传状态 / 时间）。"""
+    config = load_config(args.config)
+    output_root = resolve_output_dir(config)
+    store = LocalStore(output_root)
+    records = store.list_artifacts(limit=args.limit)
+    stats = store.stats()
+
+    if not records:
+        _print("暂无产物。")
+        return 0
+
+    _print(f"{'artifact_id':<18}{'文件名':<34}{'大小':>10}  上传状态      创建时间")
+    _print("-" * 92)
+    for r in records:
+        created = r.created_at.replace("T", " ")[:19]
+        _print(f"{r.artifact_id:<18}{r.filename:<34}{r.size:>10,}  {r.upload_status:<12}{created}")
+    _print("-" * 92)
+    _print(f"共 {stats['count']} 个文件，占用 {stats['total_bytes']:,} 字节"
+           f"（目录：{output_root}）")
+    return 0
+
+
+def cmd_open(args: argparse.Namespace) -> int:
+    """用系统文件管理器打开产物文件所在目录（无 id 时打输出目录）。"""
+    import os
+    import subprocess
+    import sys
+
+    config = load_config(args.config)
+    output_root = resolve_output_dir(config)
+
+    if args.artifact_id:
+        store = LocalStore(output_root)
+        try:
+            record = store.get_artifact(args.artifact_id)
+        except IcogenError as exc:
+            _print(f"错误：{exc}", err=True)
+            return 1
+        if record is None:
+            _print(f"错误：产物不存在 {args.artifact_id}", err=True)
+            return 1
+        base = output_root / "bundles" if record.fit_mode == "bundle" else output_root / "icons"
+        target = base / record.filename
+        folder = base if not target.is_file() else target.parent
+    else:
+        folder = output_root
+
+    if not folder.exists():
+        _print(f"错误：目录不存在 {folder}", err=True)
+        return 1
+
+    if sys.platform == "win32":
+        os.startfile(str(folder))  # noqa: SLF001 - Windows 专属 API
+    elif sys.platform == "darwin":
+        subprocess.Popen(["open", str(folder)])
+    else:
+        subprocess.Popen(["xdg-open", str(folder)])
+    _print(f"已打开：{folder}")
+    return 0
+
+
+def cmd_rm(args: argparse.Namespace) -> int:
+    """删除单个产物（需 --yes 确认）。"""
+    config = load_config(args.config)
+    output_root = resolve_output_dir(config)
+    store = LocalStore(output_root)
+
+    if not args.yes:
+        _print(f"预演：将删除产物 {args.artifact_id}；确认后加 --yes 执行。")
+        return 0
+
+    try:
+        record = store.delete_artifact(args.artifact_id)
+    except IcogenError as exc:
+        _print(f"错误：{exc}", err=True)
+        return 1
+    _print(f"✓ 已删除 {record.filename}（{record.size:,} 字节）")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="icogen",
@@ -546,6 +627,22 @@ def build_parser() -> argparse.ArgumentParser:
     p_clean.add_argument("--yes", action="store_true",
                          help="确认执行删除（不带时等同 dry-run）")
     p_clean.set_defaults(func=cmd_clean)
+
+    p_list = sub.add_parser("list", help="列出本地产物")
+    p_list.add_argument("--limit", type=int, default=100,
+                        help="最多显示最近多少条（1-1000）")
+    p_list.set_defaults(func=cmd_list)
+
+    p_open = sub.add_parser("open", help="打开产物所在目录（文件管理器）")
+    p_open.add_argument("artifact_id", nargs="?", default=None,
+                        help="产物 id（省略时打开输出目录）")
+    p_open.set_defaults(func=cmd_open)
+
+    p_rm = sub.add_parser("rm", help="删除单个产物（文件 + 记录）")
+    p_rm.add_argument("artifact_id", help="要删除的产物 id")
+    p_rm.add_argument("--yes", action="store_true",
+                      help="确认删除（不带时等同预演）")
+    p_rm.set_defaults(func=cmd_rm)
 
     return parser
 
