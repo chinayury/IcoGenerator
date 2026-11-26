@@ -27,7 +27,7 @@ mstile、manifest.json 等物料，却没有一个把它们整合成「一次生
 from __future__ import annotations
 
 import json
-from typing import Dict, List, Optional, Sequence, Tuple
+from typing import Collection, Dict, List, Optional, Sequence, Tuple
 
 from PIL import Image
 
@@ -85,6 +85,22 @@ def png_bytes(
     return buffer.getvalue()
 
 
+def _manifest_icons(include_maskable: bool) -> List[Dict[str, str]]:
+    icons = [
+        {"src": f"android-chrome-{w}x{h}.png", "sizes": f"{w}x{h}",
+         "type": "image/png", "purpose": "any"}
+        for w, h in ANDROID_SIZES
+    ]
+    if include_maskable:
+        icons.append({
+            "src": "android-chrome-512x512-maskable.png",
+            "sizes": "512x512",
+            "type": "image/png",
+            "purpose": "maskable",
+        })
+    return icons
+
+
 def build_manifest(
     *,
     name: str = "My App",
@@ -92,36 +108,17 @@ def build_manifest(
     theme_color: str = DEFAULT_THEME_COLOR,
     background_color: str = DEFAULT_BACKGROUND_COLOR,
     display: str = DEFAULT_DISPLAY,
+    include_maskable: bool = True,
 ) -> str:
     """生成 PWA Web App Manifest。
 
-    同时输出 ``purpose: "any maskable"``：现代浏览器会自动在需要安全裁切时
-    使用 maskable 版本，因此建议与普通版本同时提供。
+    仅在包内含安全区变体时附加 maskable 条目。
     """
     short = short_name or name[:12]
     manifest = {
         "name": name,
         "short_name": short,
-        "icons": [
-            {
-                "src": "android-chrome-192x192.png",
-                "sizes": "192x192",
-                "type": "image/png",
-                "purpose": "any",
-            },
-            {
-                "src": "android-chrome-512x512.png",
-                "sizes": "512x512",
-                "type": "image/png",
-                "purpose": "any",
-            },
-            {
-                "src": "android-chrome-512x512-maskable.png",
-                "sizes": "512x512",
-                "type": "image/png",
-                "purpose": "maskable",
-            },
-        ],
+        "icons": _manifest_icons(include_maskable),
         "theme_color": theme_color,
         "background_color": background_color,
         "display": display,
@@ -165,27 +162,7 @@ def merge_manifest(
         if not any(str(entry.get("src", "")).endswith(name) for name in ours)
     ]
 
-    kept.extend([
-        {
-            "src": "android-chrome-192x192.png",
-            "sizes": "192x192",
-            "type": "image/png",
-            "purpose": "any",
-        },
-        {
-            "src": "android-chrome-512x512.png",
-            "sizes": "512x512",
-            "type": "image/png",
-            "purpose": "any",
-        },
-    ])
-    if include_maskable:
-        kept.append({
-            "src": "android-chrome-512x512-maskable.png",
-            "sizes": "512x512",
-            "type": "image/png",
-            "purpose": "maskable",
-        })
+    kept.extend(_manifest_icons(include_maskable))
 
     merged = dict(data)
     merged["icons"] = kept
@@ -258,6 +235,7 @@ def build_manifest_text(
     include_maskable: bool = True,
     name: str = "My App",
     theme_color: str = DEFAULT_THEME_COLOR,
+    files: Optional[Collection[str]] = None,
 ) -> str:
     """生成物料包内的 MANIFEST.txt。
 
@@ -292,9 +270,10 @@ def build_manifest_text(
         "-" * 30,
     ]
     for item in describe_site_assets():
+        if files is not None and item["file"] != MANIFEST_FILENAME and item["file"] not in files:
+            continue
         lines.append(f"{item['file']:<42} {item['purpose']}")
     lines += [
-        f"{MANIFEST_FILENAME:<42} 本清单文件",
         "",
         "使用方式：把除本清单外的文件放到网站根目录（或同级静态目录），",
         "再按 site-icon.html 中的片段把引用粘到页面 <head>。",
@@ -421,7 +400,7 @@ def build_site_assets(
     else:
         assets["manifest.json"] = build_manifest(
             name=name, theme_color=theme_color,
-            background_color=DEFAULT_BACKGROUND_COLOR,
+            background_color=DEFAULT_BACKGROUND_COLOR, include_maskable=include_maskable,
         ).encode("utf-8")
     assets["site-icon.html"] = build_html_snippet(
         include_svg=include_svg, include_mstile=not minimal,
@@ -431,7 +410,7 @@ def build_site_assets(
     assets[MANIFEST_FILENAME] = build_manifest_text(
         source_size=image.size, fit_mode=fit_mode, safe_zone=safe_zone,
         background=background, opaque_pad=opaque_pad, padding=padding,
-        ico_sizes=ico_sizes, include_maskable=include_maskable,
+        ico_sizes=ico_sizes, include_maskable=include_maskable, files=assets.keys(),
         name=name, theme_color=theme_color,
     ).encode("utf-8")
 
@@ -486,7 +465,8 @@ def describe_site_assets() -> List[Dict[str, str]]:
     return [
         {"file": "favicon.ico", "purpose": "浏览器标签、Windows 快捷方式（多尺寸）"},
         {"file": "favicon.svg", "purpose": "矢量 favicon（源图为 SVG 时附带，现代浏览器优先使用）"},
-        {"file": "favicon-16x16.png / favicon-32x32.png", "purpose": "浏览器标签独立引用"},
+        *({"file": f"favicon-{w}x{h}.png", "purpose": "独立 PNG 图标"}
+          for w, h in FAVICON_SIZES),
         {"file": "apple-touch-icon.png", "purpose": f"iOS 主屏图标（{APPLE_TOUCH_SIZE}）"},
         {"file": "android-chrome-192x192.png", "purpose": "Android 自适应图标"},
         {"file": "android-chrome-512x512.png", "purpose": "PWA 安装 / 启动画面"},

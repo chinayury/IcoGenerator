@@ -369,7 +369,7 @@ class IcoGenHandler(BaseHTTPRequestHandler):
                 self._serve_page("client.html", "网页版未安装")
                 return
 
-            if route == "/favicon.ico":
+            if route in ("/favicon.ico", "/favicon"):
                 self._handle_favicon()
                 return
 

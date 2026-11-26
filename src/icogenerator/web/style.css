@@ -1,5 +1,5 @@
 /* IcoGenerator 管理控制台样式 —— 设计体系「青瓷暖砂」
- * v0.1.0 视觉重构：松墨绿侧栏 + 暖砂底 + 青瓷绿主色 + 陶土橙步骤标记。
+ * 视觉重构：松墨绿侧栏 + 暖砂底 + 青瓷绿主色 + 陶土橙步骤标记。
  * 与前台页面（client.css）共用同一套设计令牌。
  * 类名契约（admin.js 动态操作，不可更名）：
  *   .badge(.muted/.on) .msg(.ok/.err/.warn) .locked .empty .tag(.pending/.uploaded/.failed) .btn(.small)
