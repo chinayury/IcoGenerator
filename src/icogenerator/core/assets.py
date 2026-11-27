@@ -27,6 +27,7 @@ mstile、manifest.json 等物料，却没有一个把它们整合成「一次生
 from __future__ import annotations
 
 import json
+from html import escape
 from typing import Collection, Dict, List, Optional, Sequence, Tuple
 
 from PIL import Image
@@ -177,7 +178,7 @@ def build_browserconfig(tile_color: str = DEFAULT_THEME_COLOR) -> str:
         "  <msapplication>\n"
         "    <tile>\n"
         '      <square150x150logo src="mstile-150x150.png"/>\n'
-        f'      <TileColor>{tile_color}</TileColor>\n'
+        f'      <TileColor>{escape(tile_color)}</TileColor>\n'
         "    </tile>\n"
         "  </msapplication>\n"
         "</browserconfig>\n"
@@ -189,6 +190,7 @@ def build_html_snippet(
     include_manifest: bool = True,
     include_svg: bool = False,
     include_mstile: bool = True,
+    theme_color: str = DEFAULT_THEME_COLOR,
 ) -> str:
     """生成可直接粘贴进 index.html 的引用片段。
 
@@ -210,15 +212,16 @@ def build_html_snippet(
         '<link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png">',
         '<link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">',
     ])
+    meta_color = escape(theme_color, quote=True)
     if include_mstile:
         lines.extend([
             '<meta name="msapplication-config" content="/browserconfig.xml">',
-            '<meta name="msapplication-TileColor" content="%s">' % DEFAULT_THEME_COLOR,
+            '<meta name="msapplication-TileColor" content="%s">' % meta_color,
         ])
     if include_manifest:
         lines.insert(1, '<link rel="manifest" href="/manifest.json">')
         lines.append(
-            '<meta name="theme-color" content="%s">' % DEFAULT_THEME_COLOR
+            '<meta name="theme-color" content="%s">' % meta_color
         )
     return "\n".join(lines)
 
@@ -403,7 +406,7 @@ def build_site_assets(
             background_color=DEFAULT_BACKGROUND_COLOR, include_maskable=include_maskable,
         ).encode("utf-8")
     assets["site-icon.html"] = build_html_snippet(
-        include_svg=include_svg, include_mstile=not minimal,
+        include_svg=include_svg, include_mstile=not minimal, theme_color=theme_color,
     ).encode("utf-8")
 
     # 9) 自说明清单：脱离生成环境后仍能读懂每个文件与所用参数
