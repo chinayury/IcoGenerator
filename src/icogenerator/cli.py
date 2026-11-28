@@ -162,14 +162,16 @@ def _parse_padding(text: str) -> float:
 
 def cmd_convert(args: argparse.Namespace) -> int:
     """命令行转换：支持单文件与目录批量。"""
-    config = load_config(args.config)
     asset_base_path = normalize_asset_base_path(args.asset_base_path) if args.site_assets else ""
     # 单文件语义（借鉴 duma520 的「单文件指定完整路径」输出）：
     # -o 以 .ico 结尾时不作为输出目录，避免误建同名目录；
     # 仅在恰好处理一个文件时生效（见下），store 仍作为真相源。
     ico_file_override = bool(args.output_dir) and str(args.output_dir).lower().endswith(".ico")
-    output_root = resolve_output_dir(config, None if ico_file_override else args.output_dir)
-    store = LocalStore(output_root)
+    store = None
+    if not args.dry_run:
+        config = load_config(args.config)
+        output_root = resolve_output_dir(config, None if ico_file_override else args.output_dir)
+        store = LocalStore(output_root)
     sizes = _parse_sizes(args.sizes)
     background = _parse_color(args.background)
     safe_zone = _parse_safe_zone(args.safe_zone)
@@ -255,6 +257,7 @@ def cmd_convert(args: argparse.Namespace) -> int:
                 total_bytes += len(data)
                 continue
 
+            assert store is not None
             record = store.save_bytes(
                 data,
                 filename=f"{path.stem}.ico",
