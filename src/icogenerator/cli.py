@@ -37,6 +37,7 @@ from .core import (
     quality_hints,
     read_ico_sizes,
 )
+from .core.assets import normalize_asset_base_path
 from .core.errors import IcogenError
 from .core.imaging import open_image_file
 from .storage import LocalStore
@@ -162,6 +163,7 @@ def _parse_padding(text: str) -> float:
 def cmd_convert(args: argparse.Namespace) -> int:
     """命令行转换：支持单文件与目录批量。"""
     config = load_config(args.config)
+    asset_base_path = normalize_asset_base_path(args.asset_base_path) if args.site_assets else ""
     # 单文件语义（借鉴 duma520 的「单文件指定完整路径」输出）：
     # -o 以 .ico 结尾时不作为输出目录，避免误建同名目录；
     # 仅在恰好处理一个文件时生效（见下），store 仍作为真相源。
@@ -304,6 +306,7 @@ def cmd_convert(args: argparse.Namespace) -> int:
                     source_svg=source_svg,
                     existing_manifest=merge_manifest_text,
                     asset_set=args.site_assets_set,
+                    asset_base_path=asset_base_path,
                 )
                 bundle_record = store.save_bundle(
                     zip_data, base_name=f"{path.stem}-site-assets"
@@ -598,6 +601,8 @@ def build_parser() -> argparse.ArgumentParser:
     p_convert.add_argument("--site-assets-set", choices=SITE_ASSET_SETS, default="full",
                            help="站点物料包档位：full（完整）或 minimal"
                                 "（去 mstile/browserconfig/maskable 的现代最小集）")
+    p_convert.add_argument("--asset-base-path", default="",
+                           help="站点物料的站内 URL 前缀，例如 /assets/icons")
     p_convert.add_argument("--no-maskable", action="store_true",
                            help="站点物料包不包含 maskable 安全区变体")
     p_convert.add_argument("--app-name", default="My App",

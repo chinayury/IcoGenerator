@@ -27,11 +27,14 @@ mstile、manifest.json 等物料，却没有一个把它们整合成「一次生
 from __future__ import annotations
 
 import json
+import re
 from html import escape
 from typing import Collection, Dict, List, Optional, Sequence, Tuple
+from urllib.parse import quote, unquote
 
 from PIL import Image
 
+from .errors import IcogenError
 from .imaging import (
     MASKABLE_SAFE_ZONE,
     MIN_PADDING,
@@ -86,15 +89,39 @@ def png_bytes(
     return buffer.getvalue()
 
 
-def _manifest_icons(include_maskable: bool) -> List[Dict[str, str]]:
+def normalize_asset_base_path(value: str) -> str:
+    """校验站内 URL 路径，按段编码，并统一去掉末尾的斜杠。"""
+    message = "站点物料 URL 前缀必须是站内路径，例如 /assets/icons"
+    if not isinstance(value, str) or any(char in value for char in "\\?#"):
+        raise IcogenError(message)
+    if value in ("", "/"):
+        return ""
+    if not value.startswith("/") or re.search(r"%(?![0-9A-Fa-f]{2})", value):
+        raise IcogenError(message)
+
+    parts = []
+    for part in value[1:].removesuffix("/").split("/"):
+        try:
+            decoded = unquote(part, errors="strict")
+        except UnicodeDecodeError:
+            raise IcogenError(message) from None
+        if (decoded in ("", ".", "..") or "/" in decoded or "\\" in decoded
+                or any(ord(char) < 32 or ord(char) == 127 for char in decoded)):
+            raise IcogenError(message)
+        parts.append(quote(decoded, safe="-._~"))
+    return "/" + "/".join(parts)
+
+
+def _manifest_icons(include_maskable: bool, asset_base_path: str = "") -> List[Dict[str, str]]:
+    prefix = f"{asset_base_path}/" if asset_base_path else ""
     icons = [
-        {"src": f"android-chrome-{w}x{h}.png", "sizes": f"{w}x{h}",
+        {"src": f"{prefix}android-chrome-{w}x{h}.png", "sizes": f"{w}x{h}",
          "type": "image/png", "purpose": "any"}
         for w, h in ANDROID_SIZES
     ]
     if include_maskable:
         icons.append({
-            "src": "android-chrome-512x512-maskable.png",
+            "src": f"{prefix}android-chrome-512x512-maskable.png",
             "sizes": "512x512",
             "type": "image/png",
             "purpose": "maskable",
@@ -110,16 +137,18 @@ def build_manifest(
     background_color: str = DEFAULT_BACKGROUND_COLOR,
     display: str = DEFAULT_DISPLAY,
     include_maskable: bool = True,
+    asset_base_path: str = "",
 ) -> str:
     """生成 PWA Web App Manifest。
 
     仅在包内含安全区变体时附加 maskable 条目。
     """
     short = short_name or name[:12]
+    prefix = normalize_asset_base_path(asset_base_path)
     manifest = {
         "name": name,
         "short_name": short,
-        "icons": _manifest_icons(include_maskable),
+        "icons": _manifest_icons(include_maskable, prefix),
         "theme_color": theme_color,
         "background_color": background_color,
         "display": display,
@@ -129,12 +158,12 @@ def build_manifest(
 
 
 def merge_manifest(
-    existing_text: str, *, include_maskable: bool = True
+    existing_text: str, *, include_maskable: bool = True, asset_base_path: str = ""
 ) -> str:
     """把本项目的图标物料合并进用户既有的 manifest.json（借鉴要点 A3）。
 
     设计原则（与 pwa-asset-generator 的 manifest 自动更新相比刻意保守）：
-    - 只增改 ``icons`` 数组：替换当前目录或站点根目录中同名的生成物，保留其他来源；
+    - 只修改 ``icons`` 数组，替换旧的默认引用和相同前缀下的生成物，保留其他来源；
     - 其余字段（name / theme_color / start_url 等）**原样保留**，绝不覆盖用户配置；
     - 解析失败或根节点不是对象时返回原文，不产出半损坏的 manifest。
 
@@ -154,11 +183,14 @@ def merge_manifest(
     if not isinstance(data, dict):
         return existing_text
 
+    asset_base_path = normalize_asset_base_path(asset_base_path)
     generated_paths = {
         prefix + icon["src"]
         for icon in _manifest_icons(include_maskable=True)
         for prefix in ("", "./", "/")
     }
+    if asset_base_path:
+        generated_paths.update(icon["src"] for icon in _manifest_icons(True, asset_base_path))
     icons = data.get("icons")
     kept = []
     if isinstance(icons, list):
@@ -169,21 +201,23 @@ def merge_manifest(
             if not isinstance(src, str) or src.split("?", 1)[0].split("#", 1)[0] not in generated_paths:
                 kept.append(entry)
 
-    kept.extend(_manifest_icons(include_maskable))
+    kept.extend(_manifest_icons(include_maskable, asset_base_path))
 
     merged = dict(data)
     merged["icons"] = kept
     return json.dumps(merged, indent=2, ensure_ascii=False)
 
 
-def build_browserconfig(tile_color: str = DEFAULT_THEME_COLOR) -> str:
+def build_browserconfig(tile_color: str = DEFAULT_THEME_COLOR, *, asset_base_path: str = "") -> str:
     """生成 Windows 磁贴配置 browserconfig.xml。"""
+    prefix = normalize_asset_base_path(asset_base_path)
+    image_path = f"{prefix}/mstile-150x150.png" if prefix else "mstile-150x150.png"
     return (
         '<?xml version="1.0" encoding="utf-8"?>\n'
         '<browserconfig>\n'
         "  <msapplication>\n"
         "    <tile>\n"
-        '      <square150x150logo src="mstile-150x150.png"/>\n'
+        f'      <square150x150logo src="{image_path}"/>\n'
         f'      <TileColor>{escape(tile_color)}</TileColor>\n'
         "    </tile>\n"
         "  </msapplication>\n"
@@ -198,6 +232,7 @@ def build_html_snippet(
     include_mstile: bool = True,
     ico_sizes: Sequence[Tuple[int, int]] = FAVICON_SIZES,
     theme_color: str = DEFAULT_THEME_COLOR,
+    asset_base_path: str = "",
 ) -> str:
     """生成可直接粘贴进 index.html 的引用片段。
 
@@ -209,25 +244,28 @@ def build_html_snippet(
     以免片段引用不存在的文件。
     """
     sizes_text = " ".join(f"{w}x{h}" for w, h in validate_sizes(ico_sizes))
+    prefix = normalize_asset_base_path(asset_base_path)
+    placement = ("<!-- 将文件发布到下方引用对应的站内目录 -->" if prefix
+                 else "<!-- 将以下文件与你的页面放在同一目录 -->")
     lines = [
-        '<!-- 将以下文件与你的页面放在同一目录 -->',
-        f'<link rel="icon" href="/favicon.ico" sizes="{sizes_text}">',
+        placement,
+        f'<link rel="icon" href="{prefix}/favicon.ico" sizes="{sizes_text}">',
     ]
     if include_svg:
-        lines.append('<link rel="icon" type="image/svg+xml" href="/favicon.svg" sizes="any">')
+        lines.append(f'<link rel="icon" type="image/svg+xml" href="{prefix}/favicon.svg" sizes="any">')
     lines.extend([
-        '<link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png">',
-        '<link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png">',
-        '<link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">',
+        f'<link rel="icon" type="image/png" sizes="32x32" href="{prefix}/favicon-32x32.png">',
+        f'<link rel="icon" type="image/png" sizes="16x16" href="{prefix}/favicon-16x16.png">',
+        f'<link rel="apple-touch-icon" sizes="180x180" href="{prefix}/apple-touch-icon.png">',
     ])
     meta_color = escape(theme_color, quote=True)
     if include_mstile:
         lines.extend([
-            '<meta name="msapplication-config" content="/browserconfig.xml">',
+            f'<meta name="msapplication-config" content="{prefix}/browserconfig.xml">',
             '<meta name="msapplication-TileColor" content="%s">' % meta_color,
         ])
     if include_manifest:
-        lines.insert(1, '<link rel="manifest" href="/manifest.json">')
+        lines.insert(1, f'<link rel="manifest" href="{prefix}/manifest.json">')
         lines.append(
             '<meta name="theme-color" content="%s">' % meta_color
         )
@@ -247,6 +285,7 @@ def build_manifest_text(
     name: str = "My App",
     theme_color: str = DEFAULT_THEME_COLOR,
     files: Optional[Collection[str]] = None,
+    asset_base_path: str = "",
 ) -> str:
     """生成物料包内的 MANIFEST.txt。
 
@@ -284,9 +323,12 @@ def build_manifest_text(
         if files is not None and item["file"] != MANIFEST_FILENAME and item["file"] not in files:
             continue
         lines.append(f"{item['file']:<42} {item['purpose']}")
+    prefix = normalize_asset_base_path(asset_base_path)
+    location = (f"使用方式：把除本清单外的文件发布到站内目录 {prefix}/，" if prefix
+                else "使用方式：把除本清单外的文件放到网站根目录（或同级静态目录），")
     lines += [
         "",
-        "使用方式：把除本清单外的文件放到网站根目录（或同级静态目录），",
+        location,
         "再按 site-icon.html 中的片段把引用粘到页面 <head>。",
     ]
     return "\n".join(lines) + "\n"
@@ -315,6 +357,7 @@ def build_site_assets(
     source_svg: Optional[bytes] = None,
     existing_manifest: Optional[str] = None,
     asset_set: str = "full",
+    asset_base_path: str = "",
 ) -> Dict[str, bytes]:
     """生成完整站点物料包。
 
@@ -337,6 +380,7 @@ def build_site_assets(
         asset_set: ``full``（完整集，默认/历史行为）或 ``minimal``
             （借鉴 vite-pwa minimal2023Preset：去掉 mstile / browserconfig /
             maskable 的现代最小物料集）。
+        asset_base_path: 站点物料部署在子目录时使用的站内 URL 前缀。
 
     Returns:
         ``{文件名: 字节内容}``，可直接写盘或打包 ZIP。
@@ -347,6 +391,7 @@ def build_site_assets(
     """
     if asset_set not in SITE_ASSET_SETS:
         raise ValueError(f"未知的站点物料包档位：{asset_set}")
+    asset_base_path = normalize_asset_base_path(asset_base_path)
     minimal = asset_set == "minimal"
     # minimal 档强制不产出 maskable（物料集中没有该文件，manifest 也不引用）
     include_maskable = include_maskable and not minimal
@@ -402,20 +447,23 @@ def build_site_assets(
 
     # 8) 配置文件与引用片段（minimal 档无 browserconfig，HTML 不引用磁贴）
     if not minimal:
-        assets["browserconfig.xml"] = build_browserconfig(theme_color).encode("utf-8")
+        assets["browserconfig.xml"] = build_browserconfig(
+            theme_color, asset_base_path=asset_base_path,
+        ).encode("utf-8")
     if existing_manifest:
         # 用户既有 manifest：只合并 icons，其余字段原样保留
         assets["manifest.json"] = merge_manifest(
-            existing_manifest, include_maskable=include_maskable,
+            existing_manifest, include_maskable=include_maskable, asset_base_path=asset_base_path,
         ).encode("utf-8")
     else:
         assets["manifest.json"] = build_manifest(
             name=name, theme_color=theme_color,
             background_color=DEFAULT_BACKGROUND_COLOR, include_maskable=include_maskable,
+            asset_base_path=asset_base_path,
         ).encode("utf-8")
     assets["site-icon.html"] = build_html_snippet(
         include_svg=include_svg, include_mstile=not minimal, theme_color=theme_color,
-        ico_sizes=ico_sizes,
+        ico_sizes=ico_sizes, asset_base_path=asset_base_path,
     ).encode("utf-8")
 
     # 9) 自说明清单：脱离生成环境后仍能读懂每个文件与所用参数
@@ -423,7 +471,7 @@ def build_site_assets(
         source_size=image.size, fit_mode=fit_mode, safe_zone=safe_zone,
         background=background, opaque_pad=opaque_pad, padding=padding,
         ico_sizes=ico_sizes, include_maskable=include_maskable, files=assets.keys(),
-        name=name, theme_color=theme_color,
+        name=name, theme_color=theme_color, asset_base_path=asset_base_path,
     ).encode("utf-8")
 
     return assets
@@ -444,6 +492,7 @@ def build_site_assets_zip(
     source_svg: Optional[bytes] = None,
     existing_manifest: Optional[str] = None,
     asset_set: str = "full",
+    asset_base_path: str = "",
 ) -> bytes:
     """生成站点物料包并打包为 ZIP（内存内完成，不落临时文件）。"""
     from io import BytesIO
@@ -463,6 +512,7 @@ def build_site_assets_zip(
         source_svg=source_svg,
         existing_manifest=existing_manifest,
         asset_set=asset_set,
+        asset_base_path=asset_base_path,
     )
 
     buffer = BytesIO()

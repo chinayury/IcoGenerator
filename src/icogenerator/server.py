@@ -871,6 +871,7 @@ class IcoGenHandler(BaseHTTPRequestHandler):
             source_svg=source_svg,
             existing_manifest=existing_manifest,
             asset_set=asset_set,
+            asset_base_path=payload.get("asset_base_path", ""),
         )
 
         self._send_binary(payload_bytes, "application/zip", "site-assets.zip", download=True)
