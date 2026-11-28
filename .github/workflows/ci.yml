@@ -53,11 +53,12 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          icogen serve --host 127.0.0.1 --port 8765 > server.log 2>&1 &
+          origin=http://127.0.0.2:8765
+          icogen serve --host 127.0.0.2 --port 8765 > /dev/null &
           SERVER_PID=$!
           trap 'kill "$SERVER_PID" 2>/dev/null || true' EXIT
           for i in $(seq 1 30); do
-            if curl -fsS http://127.0.0.1:8765/api/health > health.json; then
+            if curl --noproxy '*' -fsS "$origin/api/health" > health.json; then
               break
             fi
             sleep 0.5
@@ -66,8 +67,23 @@ jobs:
           # 版本从 pyproject.toml 动态读取，不再硬编码（版本单一来源整改）
           APP_VERSION=$(sed -n 's/^version = "\(.*\)"/\1/p' pyproject.toml)
           grep -q "\"version\": \"$APP_VERSION\"" health.json
-          curl -fsS -o /dev/null http://127.0.0.1:8765/app
-          curl -fsS -o /dev/null http://127.0.0.1:8765/admin
+          curl --noproxy '*' -fsS -o /dev/null "$origin/app"
+          curl --noproxy '*' -fsS -o /dev/null "$origin/admin"
+          # 使用非默认回环地址模拟浏览器通过服务器 IP 提交图片。
+          python - <<'PY' > request.json
+          import base64
+          import json
+          from pathlib import Path
+
+          image = base64.b64encode(Path("smoke.png").read_bytes()).decode("ascii")
+          print(json.dumps({"image_base64": image, "sizes": [16, 32]}))
+          PY
+          curl --noproxy '*' -fsS -H "Origin: $origin" -H 'Content-Type: application/json' \
+            --data-binary @request.json "$origin/api/generate" > generated.json
+          python -c "import json; assert json.load(open('generated.json'))['sizes'] == [[16, 16], [32, 32]]"
+          status=$(curl --noproxy '*' -sS -o /dev/null -w '%{http_code}' -H 'Origin: http://127.0.0.2:8766' \
+            -H 'Content-Type: application/json' --data-binary @request.json "$origin/api/generate")
+          test "$status" = 403
           echo "web/API smoke test passed"
 
   build-dist:
@@ -112,4 +128,4 @@ jobs:
           # 版本从 pyproject.toml 动态读取，不再硬编码（版本单一来源整改）
           APP_VERSION=$(sed -n 's/^version = "\(.*\)"/\1/p' pyproject.toml)
           grep -q "\"version\": \"$APP_VERSION\"" health.json
-          docker logs icogenerator-ci | tail -20
+          test "$(docker inspect --format '{{.State.Status}}' icogenerator-ci)" = running

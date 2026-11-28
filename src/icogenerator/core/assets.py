@@ -190,6 +190,7 @@ def build_html_snippet(
     include_manifest: bool = True,
     include_svg: bool = False,
     include_mstile: bool = True,
+    ico_sizes: Sequence[Tuple[int, int]] = FAVICON_SIZES,
     theme_color: str = DEFAULT_THEME_COLOR,
 ) -> str:
     """生成可直接粘贴进 index.html 的引用片段。
@@ -201,12 +202,13 @@ def build_html_snippet(
     minimal 档不产出 browserconfig.xml，``include_mstile`` 置 False
     以免片段引用不存在的文件。
     """
+    sizes_text = " ".join(f"{w}x{h}" for w, h in validate_sizes(ico_sizes))
     lines = [
         '<!-- 将以下文件与你的页面放在同一目录 -->',
-        '<link rel="icon" href="/favicon.ico" sizes="any">',
+        f'<link rel="icon" href="/favicon.ico" sizes="{sizes_text}">',
     ]
     if include_svg:
-        lines.append('<link rel="icon" type="image/svg+xml" href="/favicon.svg">')
+        lines.append('<link rel="icon" type="image/svg+xml" href="/favicon.svg" sizes="any">')
     lines.extend([
         '<link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png">',
         '<link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png">',
@@ -407,6 +409,7 @@ def build_site_assets(
         ).encode("utf-8")
     assets["site-icon.html"] = build_html_snippet(
         include_svg=include_svg, include_mstile=not minimal, theme_color=theme_color,
+        ico_sizes=ico_sizes,
     ).encode("utf-8")
 
     # 9) 自说明清单：脱离生成环境后仍能读懂每个文件与所用参数

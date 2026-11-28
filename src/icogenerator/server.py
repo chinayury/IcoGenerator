@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import base64
 import io
+import ipaddress
 import json
 import logging
 import secrets
@@ -124,6 +125,26 @@ def _json_bytes(payload: Any) -> bytes:
 def _web_dir() -> Path:
     """管理页面静态资源目录。"""
     return Path(__file__).parent / "web"
+
+
+def _is_same_http_origin(origin: str, host: str) -> bool:
+    """比较浏览器来源和请求目标，仅信任 IP 字面量或 localhost。"""
+    try:
+        address = urlparse(origin)
+        if address.hostname == "localhost":
+            name = "localhost"
+        else:
+            ip = ipaddress.ip_address(address.hostname or "")
+            name = f"[{ip}]" if ip.version == 6 else str(ip)
+        port = address.port
+    except ValueError:
+        return False
+
+    # HTTP 默认端口既可以省略，也可以显式出现在 Host 中。
+    authorities = (name, f"{name}:80") if port in (None, 80) else (f"{name}:{port}",)
+    return host.lower() in authorities and any(
+        origin.lower() == f"http://{authority}" for authority in authorities
+    )
 
 
 class IcoGenHandler(BaseHTTPRequestHandler):
@@ -264,23 +285,17 @@ class IcoGenHandler(BaseHTTPRequestHandler):
         return True
 
     def _check_origin(self) -> bool:
-        """拒绝跨站来源，防止恶意网页借用户浏览器调用本机服务。
-
-        ``/api/generate`` 无需令牌，若不校验来源，任意网站都能让用户浏览器
-        往本机服务发请求（CSRF / DNS rebinding）。凡是带 Origin 且不是
-        同源（127.0.0.1 / localhost / 本机主机名）的请求一律拒绝。
-        """
-        origin = self.headers.get("Origin")
-        if not origin:
-            # 非浏览器客户端（curl / 桌面版 / 测试）不带 Origin，放行
+        """直接访问时只接受与请求 Host 相同的 HTTP 地址，且主机必须为 IP 或 localhost。"""
+        origins = self.headers.get_all("Origin")
+        if origins is None:
+            # curl、CLI 和桌面客户端可以不发送 Origin。
             return True
 
-        parsed = urlparse(origin)
-        hostname = (parsed.hostname or "").lower()
-        if hostname in ("127.0.0.1", "localhost", "::1", "[::1]", "0.0.0.0"):
+        hosts = self.headers.get_all("Host", [])
+        if len(origins) == 1 and len(hosts) == 1 and _is_same_http_origin(origins[0], hosts[0]):
             return True
 
-        LOGGER.warning("拒绝跨站请求，Origin=%s", origin)
+        LOGGER.warning("拒绝跨站请求")
         self._drain_body()
         self._send_error_json("拒绝跨站请求", HTTPStatus.FORBIDDEN)
         return False
