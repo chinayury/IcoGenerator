@@ -134,7 +134,7 @@ def merge_manifest(
     """把本项目的图标物料合并进用户既有的 manifest.json（借鉴要点 A3）。
 
     设计原则（与 pwa-asset-generator 的 manifest 自动更新相比刻意保守）：
-    - 只增改 ``icons`` 数组：移除指向本项目产物文件名的旧条目再追加新条目；
+    - 只增改 ``icons`` 数组：替换当前目录或站点根目录中同名的生成物，保留其他来源；
     - 其余字段（name / theme_color / start_url 等）**原样保留**，绝不覆盖用户配置；
     - 解析失败或根节点不是对象时返回原文，不产出半损坏的 manifest。
 
@@ -147,21 +147,27 @@ def merge_manifest(
         合并后的 manifest.json 文本。
     """
     try:
-        data = json.loads(existing_text)
+        data = json.loads(existing_text.removeprefix("\ufeff"))
     except (json.JSONDecodeError, ValueError):
         # 解析不了就不动它：宁可让用户手动合并，也不能毁掉现有配置
         return existing_text
     if not isinstance(data, dict):
         return existing_text
 
-    ours = {f"android-chrome-{s[0]}x{s[1]}.png" for s in ANDROID_SIZES}
-    ours.add("android-chrome-512x512-maskable.png")
-
-    icons = [entry for entry in data.get("icons", []) if isinstance(entry, dict)]
-    kept = [
-        entry for entry in icons
-        if not any(str(entry.get("src", "")).endswith(name) for name in ours)
-    ]
+    generated_paths = {
+        prefix + icon["src"]
+        for icon in _manifest_icons(include_maskable=True)
+        for prefix in ("", "./", "/")
+    }
+    icons = data.get("icons")
+    kept = []
+    if isinstance(icons, list):
+        for entry in icons:
+            if not isinstance(entry, dict):
+                continue
+            src = entry.get("src")
+            if not isinstance(src, str) or src.split("?", 1)[0].split("#", 1)[0] not in generated_paths:
+                kept.append(entry)
 
     kept.extend(_manifest_icons(include_maskable))
 
