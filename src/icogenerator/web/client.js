@@ -203,8 +203,6 @@ async function generate() {
       opaque_pad: $('padOpaque').checked,
       bitmap_format: $('bitmapFormat') ? $('bitmapFormat').value : 'bmp',
       asset_set: $('assetSet') ? $('assetSet').value : 'full',
-      name: 'My App',
-      theme_color: '#ffffff',
     };
 
     const resp = await fetch('/api/generate', {
@@ -371,21 +369,29 @@ $('btnSaveBundle').addEventListener('click', async () => {
   }
 });
 
-async function refreshSiteAssetsButton(payload) {
+function refreshSiteAssetsButton(payload) {
   const btn = $('btnSaveSiteAssets');
   if (!btn) return;
   btn.disabled = !mergedBlobUrl;
   btn.onclick = async () => {
     if (!payload) return;
+    btn.disabled = true;
     setMsg('saveMsg', '正在生成站点物料包…');
     try {
       const resp = await fetch('/api/site-assets', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({
+          ...payload,
+          name: $('siteAppName').value.trim() || 'My App',
+          theme_color: $('siteThemeColor').value,
+          asset_base_path: $('siteAssetBasePath').value.trim(),
+        }),
       });
-      if (resp.status === 401) throw new Error('需要管理员令牌，请使用桌面版或管理接口生成站点物料包');
-      if (!resp.ok) throw new Error('HTTP ' + resp.status);
+      if (!resp.ok) {
+        const detail = await resp.json().catch(() => null);
+        throw new Error((detail && detail.error) || ('HTTP ' + resp.status));
+      }
       const blob = await resp.blob();
       if (siteAssetsBlobUrl) URL.revokeObjectURL(siteAssetsBlobUrl);
       siteAssetsBlobUrl = URL.createObjectURL(blob);
@@ -393,6 +399,8 @@ async function refreshSiteAssetsButton(payload) {
       setMsg('saveMsg', '已下载站点物料包', 'ok');
     } catch (e) {
       setMsg('saveMsg', '站点物料包失败：' + e.message, 'err');
+    } finally {
+      btn.disabled = !mergedBlobUrl;
     }
   };
 }

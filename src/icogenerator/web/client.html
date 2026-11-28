@@ -106,6 +106,21 @@
       <div class="actual" id="actualTiles"></div>
       <div class="preview" id="preview"></div>
 
+      <details class="site-options">
+        <summary>站点物料包设置</summary>
+        <div class="site-fields">
+          <label>应用名称
+            <input type="text" id="siteAppName" placeholder="My App">
+          </label>
+          <label>主题色
+            <input type="color" id="siteThemeColor" value="#ffffff">
+          </label>
+          <label>物料 URL 前缀
+            <input type="text" id="siteAssetBasePath" placeholder="/assets/icons">
+          </label>
+        </div>
+      </details>
+
       <div class="exports">
         <button class="btn primary" id="btnSaveIco">下载多尺寸 ICO</button>
         <button class="btn" id="btnSaveBundle">下载全部尺寸 (ZIP)</button>
